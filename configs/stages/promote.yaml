@@ -1,0 +1,8 @@
+categories:
+  TP: positive
+  CONFUSER: negative_confuser
+  SPEECH_NEG: negative_speech
+  NOISE: negative_noise
+dedup_iou_threshold: 0.8
+test_size: 0.2
+random_state: 42

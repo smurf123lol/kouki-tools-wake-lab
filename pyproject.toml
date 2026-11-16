@@ -1,0 +1,24 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "wake-lab"
+version = "0.1.0"
+description = "Wake word data pipeline lab"
+requires-python = ">=3.10"
+dependencies = [
+  "pyyaml",
+  "pydantic>=2",
+  "typer>=0.12",
+  "soundfile",
+  "torch",
+  "torchaudio",
+  "scikit-learn",
+]
+
+[project.scripts]
+wake-lab = "wake_lab.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/wake_lab"]
