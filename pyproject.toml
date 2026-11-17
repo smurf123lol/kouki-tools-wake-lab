@@ -22,3 +22,6 @@ wake-lab = "wake_lab.cli:app"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/wake_lab"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]

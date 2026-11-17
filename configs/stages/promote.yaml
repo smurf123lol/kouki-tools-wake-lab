@@ -4,5 +4,6 @@ categories:
   SPEECH_NEG: negative_speech
   NOISE: negative_noise
 dedup_iou_threshold: 0.8
+confuser_ratio: 0.15
 test_size: 0.2
 random_state: 42

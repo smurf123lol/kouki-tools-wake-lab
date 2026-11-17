@@ -42,6 +42,10 @@ class PromoteStage:
         for dirname, label in categories.items():
             category_dir = ctx.paths.telemetry_labeled_dir / dirname
             if not category_dir.exists():
+                category_dir = ctx.paths.telemetry_labeled_dir / dirname.lower()
+            if not category_dir.exists():
+                category_dir = ctx.paths.telemetry_labeled_dir / dirname.upper()
+            if not category_dir.exists():
                 warnings.append(f"missing category directory: {category_dir}")
                 continue
             for wav in sorted(category_dir.rglob("*.wav")):
@@ -59,6 +63,32 @@ class PromoteStage:
                     telemetry_records.append(rec)
                 except Exception as exc:
                     warnings.append(f"invalid sample skipped {wav}: {exc}")
+
+        # Confuser dosage / capping
+        confuser_ratio = cfg.get("confuser_ratio")
+        if confuser_ratio is not None and 0.0 <= float(confuser_ratio) < 1.0:
+            ratio = float(confuser_ratio)
+            confusers = [r for r in telemetry_records if r.get("subtype") == "confuser"]
+            base_negatives = [
+                r
+                for r in (baseline_records + telemetry_records)
+                if "negative" in str(r.get("label", "")) and r.get("subtype") != "confuser"
+            ]
+            if base_negatives and len(confusers) > 0:
+                max_confusers = max(1, int(round(len(base_negatives) * ratio / (1.0 - ratio))))
+                if len(confusers) > max_confusers:
+                    import random
+                    seed = int(cfg.get("random_state", 42))
+                    rng = random.Random(seed)
+                    selected_confusers = set(rng.sample([r["id"] for r in confusers], max_confusers))
+                    telemetry_records = [
+                        r
+                        for r in telemetry_records
+                        if r.get("subtype") != "confuser" or r["id"] in selected_confusers
+                    ]
+                    warnings.append(
+                        f"confusers capped: {len(confusers)} -> {max_confusers} (ratio: {ratio})"
+                    )
 
         combined = baseline_records + telemetry_records
         if not combined:
@@ -172,12 +202,14 @@ class PromoteStage:
         except ValueError:
             rel = path.resolve().as_posix()
         metadata = self._read_sidecar(path)
+        is_confuser = "confuser" in label.lower() or category.upper() == "CONFUSER"
         return {
             "id": f"{category}:{digest[:16]}",
             "path": rel,
             "source": "telemetry",
             "category": category,
             "label": label,
+            "subtype": "confuser" if is_confuser else "normal",
             "sha256": digest,
             "metadata": metadata,
         }
