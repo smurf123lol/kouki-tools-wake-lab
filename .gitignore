@@ -5,8 +5,10 @@ __pycache__/
 .pytest_cache/
 .coverage
 htmlcov/
-artifacts/
 .venv/
+data/
+artifacts/
+artifacts/cas/*
 dist/
 build/
 *.egg-info/

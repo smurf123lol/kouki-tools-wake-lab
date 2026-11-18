@@ -5,16 +5,20 @@ build-backend = "hatchling.build"
 [project]
 name = "wake-lab"
 version = "0.1.0"
-description = "Wake word data pipeline lab"
-requires-python = ">=3.10"
+description = "Wake word data pipeline lab (Kouki tools)"
+requires-python = ">=3.12"
 dependencies = [
-  "pyyaml",
-  "pydantic>=2",
   "typer>=0.12",
+  "pyyaml",
   "soundfile",
-  "torch",
-  "torchaudio",
+  "numpy",
   "scikit-learn",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest",
+  "ruff",
 ]
 
 [project.scripts]
@@ -25,3 +29,8 @@ packages = ["src/wake_lab"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
