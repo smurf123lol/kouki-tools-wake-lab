@@ -34,3 +34,10 @@ testpaths = ["tests"]
 [tool.ruff]
 target-version = "py312"
 line-length = 100
+
+[tool.ruff.lint]
+# B008: typer.Option(...)/typer.Argument(...) в дефолтах аргументов — штатный паттерн typer,
+#       иначе CLI-команды читаются хуже и расходятся с документацией typer.
+# BLE001: осознанные catch Exception — стадия promote не падает целиком из-за одного битого
+#       сэмпла/сайдкара: пишет warning и продолжает (см. src/wake_lab/stages/promote.py:64,223).
+ignore = ["B008", "BLE001"]

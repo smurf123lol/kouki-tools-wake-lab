@@ -9,8 +9,8 @@ from typing import Any
 import soundfile as sf
 from sklearn.model_selection import GroupShuffleSplit
 
-from .base import StageContext, StageName, StageResult
 from ..artifacts import ArtifactRef
+from .base import StageContext, StageName, StageResult
 
 
 class PromoteStage:
@@ -75,7 +75,7 @@ class PromoteStage:
                 if "negative" in str(r.get("label", "")) and r.get("subtype") != "confuser"
             ]
             if base_negatives and len(confusers) > 0:
-                max_confusers = max(1, int(round(len(base_negatives) * ratio / (1.0 - ratio))))
+                max_confusers = max(1, round(len(base_negatives) * ratio / (1.0 - ratio)))
                 if len(confusers) > max_confusers:
                     import random
                     seed = int(cfg.get("random_state", 42))
@@ -248,7 +248,7 @@ class PromoteStage:
             test_size=float(cfg.get("test_size", 0.2)),
             random_state=int(cfg.get("random_state", 42)),
         )
-        train_idx, holdout_idx = next(splitter.split(records, groups=groups))
+        _train_idx, holdout_idx = next(splitter.split(records, groups=groups))
         out = ["train"] * n
         for i in holdout_idx:
             out[int(i)] = "holdout"

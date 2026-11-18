@@ -38,7 +38,7 @@ src/wake_lab/
   stages/base.py         StageName/StageContext/StageResult/Stage (Protocol)
   stages/promote.py      стадия promote
   cli.py                 typer CLI (команды stage/run)
-tests/                   3 теста (pytest)
+tests/                   4 теста в 3 файлах (pytest)
 ```
 
 ## Установка
@@ -61,7 +61,7 @@ pip install -e ".[dev]"
 
 ```bash
 pytest -q
-# 3 passed
+# 4 passed (test_artifacts, test_paths_guard, test_promote_stage)
 ```
 
 ## Запуск
