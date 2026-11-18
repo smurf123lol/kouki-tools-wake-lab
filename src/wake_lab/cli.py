@@ -4,6 +4,7 @@ import json
 import logging
 from dataclasses import asdict
 from pathlib import Path
+from typing import Any
 
 import typer
 import yaml
@@ -37,7 +38,9 @@ def _load_config(path: Path) -> dict:
     return cfg
 
 
-def _build_context(config_path: Path, dry_run: bool) -> StageContext:
+def _build_context(
+    config_path: Path, dry_run: bool, params: dict[str, Any] | None = None
+) -> StageContext:
     cfg = _load_config(config_path)
     project_root = Path(cfg.get("project_root", ".")).resolve()
     paths = PathGuard(project_root, cfg)
@@ -49,6 +52,7 @@ def _build_context(config_path: Path, dry_run: bool) -> StageContext:
         artifacts=artifacts,
         logger=logger,
         dry_run=dry_run,
+        params=dict(params or {}),
     )
 
 
@@ -76,6 +80,11 @@ def stage(
     ),
     config: Path = typer.Option(_DEFAULT_CONFIG, "--config", "-c", help="Config file path"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Dry run without committing artifacts"),
+    limit: int | None = typer.Option(
+        None,
+        "--limit",
+        help="Сколько сэмплов скачивать за стадию (обязателен для harvest)",
+    ),
 ) -> None:
     if name == "list":
         _print_stage_list()
@@ -91,7 +100,10 @@ def stage(
     if not spec.available:
         typer.echo(f"стадия {name} недоступна: {spec.unavailable_reason}", err=True)
         raise typer.Exit(3)
-    ctx = _build_context(config, dry_run)
+    params: dict[str, Any] = {}
+    if limit is not None:
+        params["limit"] = limit
+    ctx = _build_context(config, dry_run, params)
     try:
         result = spec.run(ctx)
     except StageUnavailableError as exc:

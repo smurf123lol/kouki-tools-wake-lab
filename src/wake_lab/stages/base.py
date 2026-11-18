@@ -27,6 +27,8 @@ class StageContext:
     artifacts: ArtifactStore
     logger: logging.Logger
     dry_run: bool = False
+    # Параметры конкретного запуска из CLI (например, ``--limit`` для harvest).
+    params: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

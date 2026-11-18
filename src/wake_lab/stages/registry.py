@@ -33,9 +33,8 @@ STAGES: dict[str, StageSpec] = {
     "harvest": StageSpec(
         name="harvest",
         description="сбор размеченных сэмплов через API Kouki",
-        available=False,
+        available=True,
         run=_HARVEST.run,
-        unavailable_reason="реализуется в П3 (T159)",
     ),
     "promote": StageSpec(
         name="promote",

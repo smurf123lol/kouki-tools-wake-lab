@@ -53,17 +53,8 @@ def test_train_is_unavailable_and_fails_loudly(tmp_path) -> None:
         spec.run(_context(tmp_path))
 
 
-def test_harvest_is_registered_as_skeleton_unavailable(tmp_path) -> None:
-    spec = get_stage("harvest")
-    assert spec is not None
-    assert spec.available is False
-    assert "П3" in (spec.unavailable_reason or "")
-    with pytest.raises(StageUnavailableError, match="П3"):
-        spec.run(_context(tmp_path))
-
-
-def test_promote_and_report_are_available() -> None:
-    for name in ("promote", "report"):
+def test_harvest_promote_and_report_are_available() -> None:
+    for name in ("harvest", "promote", "report"):
         spec = get_stage(name)
         assert spec is not None
         assert spec.available is True

@@ -67,10 +67,10 @@ def test_train_stage_exits_with_code_three_and_explains_reason(config_path: Path
     assert "T159" in result.output
 
 
-def test_harvest_stage_exits_with_code_three_until_p3(config_path: Path) -> None:
+def test_harvest_without_limit_exits_with_code_one_and_hint(config_path: Path) -> None:
     result = runner.invoke(app, ["stage", "harvest", "--config", str(config_path)])
-    assert result.exit_code == 3
-    assert "П3" in result.output
+    assert result.exit_code == 1
+    assert "--limit" in result.output
 
 
 def test_report_command_prints_json_summary(config_path: Path, tmp_path: Path) -> None:

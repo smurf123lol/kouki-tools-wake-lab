@@ -2,7 +2,7 @@ project_root: .
 
 paths:
   baseline: data/baseline
-  telemetry_labeled: data/telemetry_harvested/labeled
+  telemetry_labeled: data/telemetry_harvested
   artifacts: artifacts
 
 api:
