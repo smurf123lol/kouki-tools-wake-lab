@@ -1,0 +1,74 @@
+from __future__ import annotations
+
+import logging
+
+import pytest
+
+from wake_lab.artifacts import ArtifactStore
+from wake_lab.paths import PathGuard
+from wake_lab.stages.base import StageContext, StageUnavailableError
+from wake_lab.stages.registry import STAGES, get_stage, stage_names
+
+
+def _context(tmp_path, cfg: dict | None = None) -> StageContext:
+    config = cfg or {
+        "project_root": str(tmp_path),
+        "paths": {
+            "baseline": "data/baseline",
+            "telemetry_labeled": "data/telemetry_harvested/labeled",
+            "artifacts": "artifacts",
+        },
+        "api": {"base_url": "http://127.0.0.1:5300"},
+    }
+    return StageContext(
+        config=config,
+        paths=PathGuard(tmp_path, config),
+        artifacts=ArtifactStore(tmp_path / "artifacts"),
+        logger=logging.getLogger("test"),
+    )
+
+
+def test_registry_lists_four_stages_in_stable_order() -> None:
+    assert stage_names() == ["harvest", "promote", "report", "train"]
+    assert set(STAGES) == {"harvest", "promote", "report", "train"}
+
+
+def test_every_stage_entry_has_required_fields() -> None:
+    for name in stage_names():
+        spec = STAGES[name]
+        assert spec.name == name
+        assert isinstance(spec.description, str) and spec.description
+        assert isinstance(spec.available, bool)
+        assert callable(spec.run)
+        if not spec.available:
+            assert spec.unavailable_reason
+
+
+def test_train_is_unavailable_and_fails_loudly(tmp_path) -> None:
+    spec = get_stage("train")
+    assert spec is not None
+    assert spec.available is False
+    assert "T159" in (spec.unavailable_reason or "")
+    with pytest.raises(StageUnavailableError, match="T159"):
+        spec.run(_context(tmp_path))
+
+
+def test_harvest_is_registered_as_skeleton_unavailable(tmp_path) -> None:
+    spec = get_stage("harvest")
+    assert spec is not None
+    assert spec.available is False
+    assert "П3" in (spec.unavailable_reason or "")
+    with pytest.raises(StageUnavailableError, match="П3"):
+        spec.run(_context(tmp_path))
+
+
+def test_promote_and_report_are_available() -> None:
+    for name in ("promote", "report"):
+        spec = get_stage(name)
+        assert spec is not None
+        assert spec.available is True
+        assert spec.unavailable_reason is None
+
+
+def test_unknown_stage_lookup_returns_none() -> None:
+    assert get_stage("rg") is None

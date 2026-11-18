@@ -10,7 +10,14 @@ from ..paths import PathGuard
 
 
 class StageName(str, Enum):
+    HARVEST = "harvest"
     PROMOTE = "promote"
+    REPORT = "report"
+    TRAIN = "train"
+
+
+class StageUnavailableError(RuntimeError):
+    """Стадия зарегистрирована, но ещё не реализована (например, ``train``)."""
 
 
 @dataclass
@@ -20,7 +27,6 @@ class StageContext:
     artifacts: ArtifactStore
     logger: logging.Logger
     dry_run: bool = False
-    device: str = "cpu"
 
 
 @dataclass

@@ -5,6 +5,11 @@ paths:
   telemetry_labeled: data/telemetry_harvested/labeled
   artifacts: artifacts
 
+api:
+  base_url: http://127.0.0.1:5300
+  timeout_s: 10
+  retries: 2
+
 baseline:
   manifest: manifest.jsonl
   sha256: null

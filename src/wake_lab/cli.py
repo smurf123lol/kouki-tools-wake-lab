@@ -10,15 +10,31 @@ import yaml
 
 from .artifacts import ArtifactStore
 from .paths import PathGuard
-from .stages.base import StageContext, StageName, StageResult
-from .stages.promote import PromoteStage
+from .schema import ConfigError, validate_config
+from .stages.base import StageContext, StageResult, StageUnavailableError
+from .stages.registry import STAGES, get_stage, stage_names
 
 app = typer.Typer(help="Wake Lab: wake word data and model pipeline CLI")
 
+_DEFAULT_CONFIG = Path("configs/default.yaml")
+
 
 def _load_config(path: Path) -> dict:
-    with path.open("r", encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
+    if not path.exists():
+        typer.echo(f"файл конфигурации не найден: {path}", err=True)
+        raise typer.Exit(2)
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            cfg = yaml.safe_load(f) or {}
+    except yaml.YAMLError as exc:
+        typer.echo(f"ошибка конфига {path}: {exc}", err=True)
+        raise typer.Exit(2) from None
+    try:
+        validate_config(cfg)
+    except ConfigError as exc:
+        typer.echo(f"ошибка конфига {path}: {exc}", err=True)
+        raise typer.Exit(2) from None
+    return cfg
 
 
 def _build_context(config_path: Path, dry_run: bool) -> StageContext:
@@ -36,32 +52,67 @@ def _build_context(config_path: Path, dry_run: bool) -> StageContext:
     )
 
 
-def _run_stage(name: str, config_path: Path, dry_run: bool) -> StageResult:
-    ctx = _build_context(config_path, dry_run)
-    if name == StageName.PROMOTE.value:
-        return PromoteStage().run(ctx)
-    raise typer.BadParameter(f"unknown stage: {name}")
+def _print_stage_list() -> None:
+    lines = [f"{'NAME':<9}{'AVAILABLE':<11}DESCRIPTION"]
+    for name in stage_names():
+        spec = STAGES[name]
+        available = "yes" if spec.available else "no"
+        description = spec.description
+        if spec.unavailable_reason:
+            description = f"{description} — {spec.unavailable_reason}"
+        lines.append(f"{name:<9}{available:<11}{description}")
+    typer.echo("\n".join(lines))
+
+
+def _print_result(result: StageResult) -> None:
+    typer.echo(json.dumps(asdict(result), default=str, indent=2))
 
 
 @app.command()
 def stage(
-    name: str = typer.Argument(..., help="Stage name to run (e.g. promote)"),
-    config: Path = typer.Option(Path("configs/default.yaml"), "--config", "-c", help="Config file path"),
+    name: str = typer.Argument(
+        "list",
+        help="Имя стадии или 'list' для реестра стадий",
+    ),
+    config: Path = typer.Option(_DEFAULT_CONFIG, "--config", "-c", help="Config file path"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Dry run without committing artifacts"),
 ) -> None:
-    result = _run_stage(name, config, dry_run)
-    typer.echo(json.dumps(asdict(result), default=str, indent=2))
+    if name == "list":
+        _print_stage_list()
+        return
+    spec = get_stage(name)
+    if spec is None:
+        typer.echo(
+            "неизвестная стадия: "
+            f"{name}. Доступны: {', '.join(stage_names())} (список — 'stage list')",
+            err=True,
+        )
+        raise typer.Exit(2)
+    if not spec.available:
+        typer.echo(f"стадия {name} недоступна: {spec.unavailable_reason}", err=True)
+        raise typer.Exit(3)
+    ctx = _build_context(config, dry_run)
+    try:
+        result = spec.run(ctx)
+    except StageUnavailableError as exc:
+        typer.echo(f"стадия {name} недоступна: {exc}", err=True)
+        raise typer.Exit(3) from None
+    _print_result(result)
     if result.status == "failed":
         raise typer.Exit(1)
 
 
 @app.command()
-def run(
-    config: Path = typer.Option(Path("configs/default.yaml"), "--config", "-c", help="Config file path"),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Dry run without committing artifacts"),
+def report(
+    config: Path = typer.Option(_DEFAULT_CONFIG, "--config", "-c", help="Config file path"),
 ) -> None:
-    result = _run_stage(StageName.PROMOTE.value, config, dry_run)
-    typer.echo(json.dumps(asdict(result), default=str, indent=2))
+    spec = get_stage("report")
+    if spec is None or not spec.available:
+        typer.echo("стадия report недоступна", err=True)
+        raise typer.Exit(3)
+    ctx = _build_context(config, dry_run=False)
+    result = spec.run(ctx)
+    typer.echo(json.dumps(result.outputs, ensure_ascii=False, indent=2, default=str))
     if result.status == "failed":
         raise typer.Exit(1)
 
