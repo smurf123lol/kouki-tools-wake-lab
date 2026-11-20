@@ -1,6 +1,6 @@
 use clap::Parser;
 use std::path::PathBuf;
-use wake_trainer::pipeline::{run_pipeline, PipelineConfig};
+use wake_trainer::pipeline::{run_pipeline, run_theories_sweep, PipelineConfig};
 use burn::tensor::{Device, DeviceKind, Tensor};
 
 #[derive(Parser, Debug)]
@@ -9,6 +9,10 @@ struct Cli {
     /// Проверить доступность GPU и инициализацию WGPU/Vulkan
     #[arg(long)]
     check_device: bool,
+
+    /// Запустить бенчмарк пула теорий (свип по гипотезам) и выбрать лучшую
+    #[arg(long)]
+    sweep_theories: bool,
 
     /// Путь к файлу извлеченных признаков (features.safetensors)
     #[arg(long, default_value = "artifacts/cache/features.safetensors")]
@@ -57,6 +61,14 @@ struct Cli {
     /// Лимит пула негативов для L2 (по умолчанию 1.5 * N_pos)
     #[arg(long)]
     neg_cap_l2: Option<usize>,
+
+    /// Множитель динамического переноса легких негативов (0.0 = строгая изоляция)
+    #[arg(long, default_value_t = 0.0)]
+    k_easy: f32,
+
+    /// Степень уверенности для динамического переноса (1.0 = линейный, 2.0 = квадратичный)
+    #[arg(long, default_value_t = 1.0)]
+    gamma_easy: f32,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -81,6 +93,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let device = Device::wgpu(DeviceKind::DiscreteGpu(0)).autodiff();
     println!("Выбран вычислительный дискретный GPU: {:?}", device);
 
+    if cli.sweep_theories {
+        run_theories_sweep(&cli.features, &cli.out_dir, &device)?;
+        return Ok(());
+    }
+
     let cfg = PipelineConfig {
         epochs_l1: cli.epochs_l1,
         epochs_l2: cli.epochs_l2,
@@ -94,6 +111,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         err_th_l2: cli.err_th_l2,
         seed: cli.seed,
         neg_cap_l2: cli.neg_cap_l2,
+        k_easy: cli.k_easy,
+        gamma_easy: cli.gamma_easy,
     };
 
     run_pipeline(&cli.features, &cli.out_dir, &cfg, &device)?;

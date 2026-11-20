@@ -85,6 +85,12 @@ def stage(
         "--limit",
         help="Сколько сэмплов скачивать за стадию (обязателен для harvest)",
     ),
+    theories: bool = typer.Option(
+        False,
+        "--theories",
+        "-t",
+        help="Запустить бенчмарк пула теорий при обучении (train stage)",
+    ),
 ) -> None:
     if name == "list":
         _print_stage_list()
@@ -103,6 +109,8 @@ def stage(
     params: dict[str, Any] = {}
     if limit is not None:
         params["limit"] = limit
+    if theories:
+        params["sweep_theories"] = True
     ctx = _build_context(config, dry_run, params)
     try:
         result = spec.run(ctx)

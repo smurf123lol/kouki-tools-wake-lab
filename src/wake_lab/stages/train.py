@@ -50,7 +50,7 @@ class TrainStage:
         out_dir = ctx.paths.artifacts_dir / "models"
         out_dir.mkdir(parents=True, exist_ok=True)
 
-        train_cfg = ctx.config.get("train", {})
+        train_cfg = {**ctx.config.get("train", {}), **ctx.params}
         epochs_l1 = int(train_cfg.get("epochs_l1", 20))
         epochs_l2 = int(train_cfg.get("epochs_l2", 20))
         batch_size = int(train_cfg.get("batch_size", 64))
@@ -59,6 +59,9 @@ class TrainStage:
         th_hard = float(train_cfg.get("th_hard", 0.35))
         err_repeat = int(train_cfg.get("err_repeat", 3))
         seed = int(train_cfg.get("seed", 42))
+        k_easy = float(train_cfg.get("k_easy", 0.0))
+        gamma_easy = float(train_cfg.get("gamma_easy", 1.0))
+        sweep_theories = bool(train_cfg.get("sweep_theories", False))
 
         cmd = [
             str(trainer_bin),
@@ -72,10 +75,15 @@ class TrainStage:
             "--th-hard", str(th_hard),
             "--err-repeat", str(err_repeat),
             "--seed", str(seed),
+            "--k-easy", str(k_easy),
+            "--gamma-easy", str(gamma_easy),
         ]
 
         if "neg_cap_l2" in train_cfg:
             cmd.extend(["--neg-cap-l2", str(int(train_cfg["neg_cap_l2"]))])
+
+        if sweep_theories:
+            cmd.append("--sweep-theories")
 
         logger.info(f"Запуск GPU обучения: {' '.join(cmd)}")
         run_res = subprocess.run(cmd, capture_output=True, text=True)
