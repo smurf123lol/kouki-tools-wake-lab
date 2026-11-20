@@ -15,6 +15,7 @@ class StageName(str, Enum):
     PREPARE = "prepare"
     REPORT = "report"
     TRAIN = "train"
+    CALIBRATE = "calibrate"
 
 
 class StageUnavailableError(RuntimeError):

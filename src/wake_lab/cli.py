@@ -91,6 +91,12 @@ def stage(
         "-t",
         help="Запустить бенчмарк пула теорий при обучении (train stage)",
     ),
+    epochs: int | None = typer.Option(
+        None,
+        "--epochs",
+        "-e",
+        help="Количество эпох обучения L1 и L2 (train stage)",
+    ),
 ) -> None:
     if name == "list":
         _print_stage_list()
@@ -111,6 +117,8 @@ def stage(
         params["limit"] = limit
     if theories:
         params["sweep_theories"] = True
+    if epochs is not None:
+        params["epochs"] = epochs
     ctx = _build_context(config, dry_run, params)
     try:
         result = spec.run(ctx)

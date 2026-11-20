@@ -51,15 +51,16 @@ class TrainStage:
         out_dir.mkdir(parents=True, exist_ok=True)
 
         train_cfg = {**ctx.config.get("train", {}), **ctx.params}
-        epochs_l1 = int(train_cfg.get("epochs_l1", 20))
-        epochs_l2 = int(train_cfg.get("epochs_l2", 20))
+        epochs_override = train_cfg.get("epochs")
+        epochs_l1 = int(epochs_override if epochs_override is not None else train_cfg.get("epochs_l1", 40))
+        epochs_l2 = int(epochs_override if epochs_override is not None else train_cfg.get("epochs_l2", 40))
         batch_size = int(train_cfg.get("batch_size", 64))
         lr_l1 = float(train_cfg.get("lr_l1", 1.5e-3))
         lr_l2 = float(train_cfg.get("lr_l2", 1.0e-3))
         th_hard = float(train_cfg.get("th_hard", 0.35))
         err_repeat = int(train_cfg.get("err_repeat", 3))
         seed = int(train_cfg.get("seed", 42))
-        k_easy = float(train_cfg.get("k_easy", 0.0))
+        k_easy = float(train_cfg.get("k_easy", 0.15))
         gamma_easy = float(train_cfg.get("gamma_easy", 1.0))
         sweep_theories = bool(train_cfg.get("sweep_theories", False))
 

@@ -201,7 +201,7 @@ pub fn train_cascade(
     val_ds: &Dataset,
     cfg: &PipelineConfig,
     device: &Device,
-) -> (WakeNetL1, WakeNetL2, CascadeMetrics) {
+) -> (WakeNetL1, WakeNetL2, CascadeMetrics, HoldoutPredictions) {
     // 1. Обучение L1
     println!("\n[Этап 1] Обучение модели L1 (микро-CNN)...");
     let model_l1 = WakeNetL1::new(device);
@@ -329,7 +329,22 @@ pub fn train_cascade(
         th_l2: th_l2_nom,
     };
 
-    (model_l1, model_l2, cascade_metrics)
+    let preds = HoldoutPredictions {
+        p1: val_p1,
+        p2: val_p2,
+        y: val_ds.y.clone(),
+        y_l1: val_ds.y_l1.clone(),
+    };
+
+    (model_l1, model_l2, cascade_metrics, preds)
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct HoldoutPredictions {
+    pub p1: Vec<f32>,
+    pub p2: Vec<f32>,
+    pub y: Vec<f32>,
+    pub y_l1: Vec<f32>,
 }
 
 pub fn run_pipeline<P: AsRef<Path>, Q: AsRef<Path>>(
@@ -344,7 +359,7 @@ pub fn run_pipeline<P: AsRef<Path>, Q: AsRef<Path>>(
     let (train_ds, val_ds) = full_ds.split_train_val();
     println!("Выборка: train = {} окон, val/holdout = {} окон", train_ds.n_samples, val_ds.n_samples);
 
-    let (model_l1, model_l2, cascade_metrics) = train_cascade(&train_ds, &val_ds, cfg, device);
+    let (model_l1, model_l2, cascade_metrics, preds) = train_cascade(&train_ds, &val_ds, cfg, device);
 
     // 5. Квантование и экспорт C-заголовков
     println!("\n[Этап 5] Квантование INT8 и экспорт Си-заголовков в {:?}...", out_dir.as_ref());
@@ -356,6 +371,13 @@ pub fn run_pipeline<P: AsRef<Path>, Q: AsRef<Path>>(
     let json_bytes = serde_json::to_vec_pretty(&cascade_metrics)?;
     mf.write_all(&json_bytes)?;
     println!("Метрики записаны в {:?}", metrics_path);
+
+    // 7. Запись предсказаний holdout для калибровки профилей
+    let preds_path = out_dir.as_ref().join("predictions.json");
+    let mut pf = File::create(&preds_path)?;
+    let p_bytes = serde_json::to_vec(&preds)?;
+    pf.write_all(&p_bytes)?;
+    println!("Предсказания holdout записаны в {:?}", preds_path);
 
     println!("=== Конвейер успешно завершён! ===");
     Ok(cascade_metrics)
@@ -456,7 +478,7 @@ pub fn run_theories_sweep<P: AsRef<Path>, Q: AsRef<Path>>(
     let mut results = Vec::new();
     let mut best_score = -1e9f64;
     let mut best_theory_id = String::new();
-    let mut best_models: Option<(WakeNetL1, WakeNetL2, CascadeMetrics)> = None;
+    let mut best_models: Option<(WakeNetL1, WakeNetL2, CascadeMetrics, HoldoutPredictions)> = None;
 
     for (idx, (id, name, hypothesis, cfg)) in pool.into_iter().enumerate() {
         println!("\n-------------------------------------------------------------------------------");
@@ -466,7 +488,7 @@ pub fn run_theories_sweep<P: AsRef<Path>, Q: AsRef<Path>>(
                  cfg.k_easy, cfg.gamma_easy, cfg.th_hard, cfg.err_repeat);
         println!("-------------------------------------------------------------------------------");
 
-        let (m1, m2, metrics) = train_cascade(&train_ds, &val_ds, &cfg, device);
+        let (m1, m2, metrics, preds) = train_cascade(&train_ds, &val_ds, &cfg, device);
 
         // Интегральная оценка: приоритет Multiplicative Recall с жестким штрафом за False Positive Rate
         let score = metrics.multiplicative_recall * 100.0 - (metrics.multiplicative_fpr * 100.0 * 5.0);
@@ -477,7 +499,7 @@ pub fn run_theories_sweep<P: AsRef<Path>, Q: AsRef<Path>>(
         if score > best_score {
             best_score = score;
             best_theory_id = id.to_string();
-            best_models = Some((m1, m2, metrics.clone()));
+            best_models = Some((m1, m2, metrics.clone(), preds));
         }
 
         results.push(TheoryResult {
@@ -496,7 +518,7 @@ pub fn run_theories_sweep<P: AsRef<Path>, Q: AsRef<Path>>(
     }
 
     // Сохраняем C-заголовки лучшей теории
-    if let Some((best_m1, best_m2, best_metrics)) = best_models {
+    if let Some((best_m1, best_m2, best_metrics, best_preds)) = best_models {
         println!("\n===============================================================================");
         println!(">>> ЛУЧШАЯ ТЕОРИЯ: {} (Счёт: {:.2})", best_theory_id, best_score);
         println!("Экспорт C-заголовков лучшей модели в {:?}...", out_dir.as_ref());
@@ -506,6 +528,12 @@ pub fn run_theories_sweep<P: AsRef<Path>, Q: AsRef<Path>>(
         let mut mf = File::create(&metrics_path)?;
         let json_bytes = serde_json::to_vec_pretty(&best_metrics)?;
         mf.write_all(&json_bytes)?;
+
+        let preds_path = out_dir.as_ref().join("predictions.json");
+        let mut pf = File::create(&preds_path)?;
+        let p_bytes = serde_json::to_vec(&best_preds)?;
+        pf.write_all(&p_bytes)?;
+        println!("Предсказания лучшей теории записаны в {:?}", preds_path);
     }
 
     // Сводная таблица Markdown

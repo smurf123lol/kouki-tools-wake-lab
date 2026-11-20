@@ -9,6 +9,7 @@ from .prepare import PrepareStage
 from .promote import PromoteStage
 from .report import ReportStage
 from .train import TrainStage
+from .calibrate import CalibrateStage
 
 StageRun = Callable[[StageContext], StageResult]
 
@@ -29,6 +30,7 @@ _PROMOTE = PromoteStage()
 _PREPARE = PrepareStage()
 _REPORT = ReportStage()
 _TRAIN = TrainStage()
+_CALIBRATE = CalibrateStage()
 
 # Единственное место, где перечислены имена стадий: явный dict, без импорт-магии.
 STAGES: dict[str, StageSpec] = {
@@ -61,6 +63,12 @@ STAGES: dict[str, StageSpec] = {
         description="обучение двухкаскадной модели wake-word на GPU через Burn (WGPU/Vulkan)",
         available=True,
         run=_TRAIN.run,
+    ),
+    "calibrate": StageSpec(
+        name="calibrate",
+        description="3D-калибровка порогов, Парето-фронтир и экспорт профилей (Recall, Standard, Strict)",
+        available=True,
+        run=_CALIBRATE.run,
     ),
 }
 
