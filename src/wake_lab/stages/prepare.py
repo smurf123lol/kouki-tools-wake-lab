@@ -27,6 +27,7 @@ class AudioItem:
     is_positive: bool
     is_confuser: bool
     split: str          # train / holdout
+    source: str = "raw" # raw / augmented
 
 
 class PrepareStage:
@@ -75,6 +76,7 @@ class PrepareStage:
                     is_pos = (cat == "TP" or rec.get("label") == "positive")
                     is_conf = (cat == "CONFUSER" or "confuser" in rec.get("label", ""))
                     split = rec.get("split", "train")
+                    source = rec.get("source", "raw")
 
                     items.append(AudioItem(
                         path=p,
@@ -82,6 +84,7 @@ class PrepareStage:
                         is_positive=is_pos,
                         is_confuser=is_conf,
                         split=split,
+                        source=source,
                     ))
 
                     if cat == "NOISE" or "noise" in rec.get("label", ""):
@@ -118,8 +121,8 @@ class PrepareStage:
         w_l2_list: list[float] = []
         split_list: list[int] = []  # 0: train, 1: holdout
 
-        train_variants_pos = int(ctx.config.get("prepare", {}).get("variants_pos", 3))
-        train_variants_conf = int(ctx.config.get("prepare", {}).get("variants_conf", 2))
+        train_variants_raw_pos = int(ctx.config.get("prepare", {}).get("variants_raw_pos", 11))
+        train_variants_raw_conf = int(ctx.config.get("prepare", {}).get("variants_raw_conf", 3))
 
         for it in items:
             try:
@@ -148,6 +151,25 @@ class PrepareStage:
                 weight_l1 = 0.20
                 weight_l2 = 0.15
 
+            # Длинный фон (> 3 с): нарезка скользящими окнами с шагом 1.0 с и энергогейтом
+            if not it.is_positive and not it.is_confuser and len(pcm) >= 48000:
+                stride = 16000  # 1.0 с
+                n_sliced = 0
+                for st in range(0, len(pcm) - 24000 + 1, stride):
+                    chunk = pcm[st : st + 24000]
+                    # Энергогейт прошивки: пиковая амплитуда >= 500 из 32768
+                    if np.max(np.abs(chunk)) * 32768.0 >= 500.0:
+                        window_list.append(chunk)
+                        y_list.append(0.0)
+                        y_l1_list.append(0.0)
+                        w_l1_list.append(0.20)
+                        w_l2_list.append(0.15)
+                        split_list.append(0 if it.split == "train" else 1)
+                        n_sliced += 1
+                        if n_sliced >= 300:  # ограничение на один длинный файл
+                            break
+                continue
+
             if it.split == "train":
                 # Базовое окно
                 base_win = place_in_window(pcm, rng, it.is_positive)
@@ -158,18 +180,20 @@ class PrepareStage:
                 w_l2_list.append(weight_l2)
                 split_list.append(0)
 
-                # Аугментированные копии для тренировки
-                reps = train_variants_pos if it.is_positive else (train_variants_conf if it.is_confuser else 0)
-                for _ in range(reps):
-                    aug_win = augmenter.augment(base_win, it.is_positive)
-                    window_list.append(aug_win)
-                    y_list.append(lbl_y)
-                    y_l1_list.append(lbl_y1)
-                    w_l1_list.append(weight_l1)
-                    w_l2_list.append(weight_l2)
-                    split_list.append(0)
+                # Аугментации применяются ТОЛЬКО к сырым (raw) данным.
+                # Повторная аугментация уже пред-аугментированных файлов (augmented/) запрещена.
+                if it.source == "raw":
+                    reps = train_variants_raw_pos if it.is_positive else (train_variants_raw_conf if it.is_confuser else 0)
+                    for _ in range(reps):
+                        aug_win = augmenter.augment(base_win, it.is_positive)
+                        window_list.append(aug_win)
+                        y_list.append(lbl_y)
+                        y_l1_list.append(lbl_y1)
+                        w_l1_list.append(weight_l1)
+                        w_l2_list.append(weight_l2)
+                        split_list.append(0)
             else:
-                # Holdout: без случайных аугментаций
+                # Holdout: без случайных аугментаций (ровно 1 окно)
                 win = place_in_window(pcm, rng, it.is_positive)
                 window_list.append(win)
                 y_list.append(lbl_y)
@@ -303,6 +327,7 @@ class PrepareStage:
 
             # Распределение 85% train / 15% holdout
             split = "holdout" if hash(p.name) % 100 < 15 else "train"
+            source = "augmented" if "augmented" in path_str else "raw"
 
             items.append(AudioItem(
                 path=p,
@@ -310,6 +335,7 @@ class PrepareStage:
                 is_positive=is_pos,
                 is_confuser=is_conf,
                 split=split,
+                source=source,
             ))
 
             if cat == "NOISE":

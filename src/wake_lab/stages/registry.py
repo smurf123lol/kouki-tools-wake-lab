@@ -58,10 +58,9 @@ STAGES: dict[str, StageSpec] = {
     ),
     "train": StageSpec(
         name="train",
-        description="обучение модели wake-word",
-        available=False,
+        description="обучение двухкаскадной модели wake-word на GPU через Burn (WGPU/Vulkan)",
+        available=True,
         run=_TRAIN.run,
-        unavailable_reason="не входит в объём T159 (см. спеку T159 §3)",
     ),
 }
 

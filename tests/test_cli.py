@@ -41,14 +41,13 @@ def config_path(tmp_path: Path) -> Path:
     return path
 
 
-def test_stage_list_prints_four_stages_with_availability() -> None:
+def test_stage_list_prints_all_stages_with_availability() -> None:
     result = runner.invoke(app, ["stage", "list"])
     assert result.exit_code == 0
     output = result.output
     assert "AVAILABLE" in output
-    for name in ("harvest", "promote", "report", "train"):
+    for name in ("harvest", "prepare", "promote", "report", "train"):
         assert name in output
-    assert "no" in output
     assert "yes" in output
 
 
@@ -60,11 +59,13 @@ def test_unknown_stage_exits_with_code_two_and_lists_stages(config_path: Path) -
     assert "promote" in result.output
 
 
-def test_train_stage_exits_with_code_three_and_explains_reason(config_path: Path) -> None:
-    result = runner.invoke(app, ["stage", "train", "--config", str(config_path)])
-    assert result.exit_code == 3
-    assert "недоступна" in result.output
-    assert "T159" in result.output
+def test_train_stage_without_features_fails(tmp_path: Path) -> None:
+    cfg = dict(_VALID_CONFIG)
+    cfg["project_root"] = str(tmp_path)
+    path = tmp_path / "config.yaml"
+    path.write_text(yaml.safe_dump(cfg, allow_unicode=True), encoding="utf-8")
+    result = runner.invoke(app, ["stage", "train", "--config", str(path)])
+    assert result.exit_code != 0
 
 
 def test_harvest_without_limit_exits_with_code_one_and_hint(config_path: Path) -> None:

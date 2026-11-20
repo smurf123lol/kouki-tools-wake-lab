@@ -28,9 +28,9 @@ def _context(tmp_path, cfg: dict | None = None) -> StageContext:
     )
 
 
-def test_registry_lists_four_stages_in_stable_order() -> None:
-    assert stage_names() == ["harvest", "promote", "report", "train"]
-    assert set(STAGES) == {"harvest", "promote", "report", "train"}
+def test_registry_lists_all_stages_in_stable_order() -> None:
+    assert stage_names() == ["harvest", "prepare", "promote", "report", "train"]
+    assert set(STAGES) == {"harvest", "prepare", "promote", "report", "train"}
 
 
 def test_every_stage_entry_has_required_fields() -> None:
@@ -44,17 +44,15 @@ def test_every_stage_entry_has_required_fields() -> None:
             assert spec.unavailable_reason
 
 
-def test_train_is_unavailable_and_fails_loudly(tmp_path) -> None:
+def test_train_is_available() -> None:
     spec = get_stage("train")
     assert spec is not None
-    assert spec.available is False
-    assert "T159" in (spec.unavailable_reason or "")
-    with pytest.raises(StageUnavailableError, match="T159"):
-        spec.run(_context(tmp_path))
+    assert spec.available is True
+    assert spec.unavailable_reason is None
 
 
-def test_harvest_promote_and_report_are_available() -> None:
-    for name in ("harvest", "promote", "report"):
+def test_all_stages_are_available() -> None:
+    for name in ("harvest", "prepare", "promote", "report", "train"):
         spec = get_stage(name)
         assert spec is not None
         assert spec.available is True
