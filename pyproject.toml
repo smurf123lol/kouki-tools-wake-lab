@@ -13,6 +13,7 @@ dependencies = [
   "soundfile",
   "numpy",
   "scikit-learn",
+  "safetensors>=0.8.0",
 ]
 
 [project.optional-dependencies]

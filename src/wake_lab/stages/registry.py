@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from .base import StageContext, StageResult
 from .harvest import HarvestStage
+from .prepare import PrepareStage
 from .promote import PromoteStage
 from .report import ReportStage
 from .train import TrainStage
@@ -25,6 +26,7 @@ class StageSpec:
 
 _HARVEST = HarvestStage()
 _PROMOTE = PromoteStage()
+_PREPARE = PrepareStage()
 _REPORT = ReportStage()
 _TRAIN = TrainStage()
 
@@ -41,6 +43,12 @@ STAGES: dict[str, StageSpec] = {
         description="дедуп, holdout-сплит и запись корпуса в CAS",
         available=True,
         run=_PROMOTE.run,
+    ),
+    "prepare": StageSpec(
+        name="prepare",
+        description="расчет Log-Mel спектрограмм L1/L2 и экспорт в features.safetensors",
+        available=True,
+        run=_PREPARE.run,
     ),
     "report": StageSpec(
         name="report",

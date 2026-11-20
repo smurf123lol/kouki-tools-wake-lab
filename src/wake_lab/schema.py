@@ -4,7 +4,7 @@ from typing import Any
 
 KNOWN_CATEGORIES = ("TP", "CONFUSER", "SPEECH_NEG", "NOISE")
 
-_ROOT_KEYS = ("project_root", "paths", "api", "baseline", "promote")
+_ROOT_KEYS = ("project_root", "paths", "api", "baseline", "promote", "prepare", "train")
 _PATHS_KEYS = ("baseline", "telemetry_labeled", "artifacts")
 _API_KEYS = ("base_url", "timeout_s", "retries")
 _BASELINE_KEYS = ("manifest", "sha256")
@@ -15,6 +15,7 @@ _PROMOTE_KEYS = (
     "test_size",
     "random_state",
 )
+_PREPARE_KEYS = ("variants_pos", "variants_conf")
 
 
 class ConfigError(ValueError):
@@ -137,5 +138,8 @@ def validate_config(config: Any) -> dict[str, Any]:
     random_state = _number(promote, "random_state", "promote")
     if random_state is not None and random_state != int(random_state):
         raise _error("promote.random_state", "ожидается целое число")
+
+    prepare = _section(config, "prepare")
+    _check_unknown_keys(prepare, _PREPARE_KEYS, "prepare")
 
     return config

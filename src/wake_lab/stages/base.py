@@ -12,6 +12,7 @@ from ..paths import PathGuard
 class StageName(str, Enum):
     HARVEST = "harvest"
     PROMOTE = "promote"
+    PREPARE = "prepare"
     REPORT = "report"
     TRAIN = "train"
 
