@@ -4,12 +4,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from .base import StageContext, StageResult
+from .calibrate import CalibrateStage
 from .harvest import HarvestStage
 from .prepare import PrepareStage
 from .promote import PromoteStage
 from .report import ReportStage
 from .train import TrainStage
-from .calibrate import CalibrateStage
 
 StageRun = Callable[[StageContext], StageResult]
 

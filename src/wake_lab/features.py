@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
 import numpy as np
 import soundfile as sf
@@ -82,7 +81,7 @@ def read_audio_pcm(path: Path | str) -> np.ndarray:
     mono = data.mean(axis=1) if data.shape[1] > 1 else data[:, 0]
     if sr != SAMPLE_RATE:
         # Простая интерполяция если частота дискретизации отличается
-        num_target = int(round(len(mono) * SAMPLE_RATE / sr))
+        num_target = round(len(mono) * SAMPLE_RATE / sr)
         mono = np.interp(
             np.linspace(0, len(mono), num_target, endpoint=False),
             np.arange(len(mono)),

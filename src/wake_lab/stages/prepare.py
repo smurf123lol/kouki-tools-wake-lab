@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 import json
-import logging
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 from safetensors.numpy import save_file
@@ -28,6 +26,55 @@ class AudioItem:
     is_confuser: bool
     split: str          # train / holdout
     source: str = "raw" # raw / augmented
+
+
+@dataclass(frozen=True)
+class SampleWeights:
+    """Единое описание меток и весов для L1 и L2 по категории сэмпла."""
+    y: float
+    y_l1: float
+    w_l1: float
+    w_l2: float
+
+
+def get_sample_weights(is_positive: bool, is_confuser: bool) -> SampleWeights:
+    """Единая функция расчета целевых меток и базовых весов потерь L1/L2."""
+    if is_positive:
+        return SampleWeights(y=1.0, y_l1=1.0, w_l1=1.0, w_l2=1.0)
+    if is_confuser:
+        return SampleWeights(y=0.0, y_l1=0.10, w_l1=0.40, w_l2=1.0)
+    # Фоновая речь / шум
+    return SampleWeights(y=0.0, y_l1=0.0, w_l1=0.20, w_l2=0.15)
+
+
+class WindowCollector:
+    """Единый коллектор фреймов с автоматическим назначением меток и весов L1/L2."""
+
+    def __init__(self) -> None:
+        self.windows: list[np.ndarray] = []
+        self.y: list[float] = []
+        self.y_l1: list[float] = []
+        self.w_l1: list[float] = []
+        self.w_l2: list[float] = []
+        self.split: list[int] = []
+
+    def add(
+        self,
+        window: np.ndarray,
+        is_positive: bool,
+        is_confuser: bool,
+        split: int,
+    ) -> None:
+        meta = get_sample_weights(is_positive, is_confuser)
+        self.windows.append(window)
+        self.y.append(meta.y)
+        self.y_l1.append(meta.y_l1)
+        self.w_l1.append(meta.w_l1)
+        self.w_l2.append(meta.w_l2)
+        self.split.append(split)
+
+    def __len__(self) -> int:
+        return len(self.windows)
 
 
 class PrepareStage:
@@ -113,13 +160,7 @@ class PrepareStage:
         # 2. Нарезка окон и аугментации
         rng = np.random.default_rng(42)
         augmenter = AudioAugmenter(noise_pool, rng)
-
-        window_list: list[np.ndarray] = []
-        y_list: list[float] = []
-        y_l1_list: list[float] = []
-        w_l1_list: list[float] = []
-        w_l2_list: list[float] = []
-        split_list: list[int] = []  # 0: train, 1: holdout
+        collector = WindowCollector()
 
         train_variants_raw_pos = int(ctx.config.get("prepare", {}).get("variants_raw_pos", 11))
         train_variants_raw_conf = int(ctx.config.get("prepare", {}).get("variants_raw_conf", 3))
@@ -134,23 +175,6 @@ class PrepareStage:
             if len(pcm) < 1600:  # менее 100 мс — мусор
                 continue
 
-            # Метки и веса
-            if it.is_positive:
-                lbl_y = 1.0
-                lbl_y1 = 1.0
-                weight_l1 = 1.0
-                weight_l2 = 1.0
-            elif it.is_confuser:
-                lbl_y = 0.0
-                lbl_y1 = 0.10  # soft label L1
-                weight_l1 = 0.40
-                weight_l2 = 1.0
-            else:
-                lbl_y = 0.0
-                lbl_y1 = 0.0
-                weight_l1 = 0.20
-                weight_l2 = 0.15
-
             # Длинный фон (> 3 с): нарезка скользящими окнами с шагом 1.0 с и энергогейтом
             if not it.is_positive and not it.is_confuser and len(pcm) >= 48000:
                 stride = 16000  # 1.0 с
@@ -159,12 +183,7 @@ class PrepareStage:
                     chunk = pcm[st : st + 24000]
                     # Энергогейт прошивки: пиковая амплитуда >= 500 из 32768
                     if np.max(np.abs(chunk)) * 32768.0 >= 500.0:
-                        window_list.append(chunk)
-                        y_list.append(0.0)
-                        y_l1_list.append(0.0)
-                        w_l1_list.append(0.20)
-                        w_l2_list.append(0.15)
-                        split_list.append(0 if it.split == "train" else 1)
+                        collector.add(chunk, is_positive=False, is_confuser=False, split=(0 if it.split == "train" else 1))
                         n_sliced += 1
                         if n_sliced >= 300:  # ограничение на один длинный файл
                             break
@@ -173,12 +192,7 @@ class PrepareStage:
             if it.split == "train":
                 # Базовое окно
                 base_win = place_in_window(pcm, rng, it.is_positive)
-                window_list.append(base_win)
-                y_list.append(lbl_y)
-                y_l1_list.append(lbl_y1)
-                w_l1_list.append(weight_l1)
-                w_l2_list.append(weight_l2)
-                split_list.append(0)
+                collector.add(base_win, it.is_positive, it.is_confuser, split=0)
 
                 # Аугментации применяются ТОЛЬКО к сырым (raw) данным.
                 # Повторная аугментация уже пред-аугментированных файлов (augmented/) запрещена.
@@ -186,29 +200,19 @@ class PrepareStage:
                     reps = train_variants_raw_pos if it.is_positive else (train_variants_raw_conf if it.is_confuser else 0)
                     for _ in range(reps):
                         aug_win = augmenter.augment(base_win, it.is_positive)
-                        window_list.append(aug_win)
-                        y_list.append(lbl_y)
-                        y_l1_list.append(lbl_y1)
-                        w_l1_list.append(weight_l1)
-                        w_l2_list.append(weight_l2)
-                        split_list.append(0)
+                        collector.add(aug_win, it.is_positive, it.is_confuser, split=0)
             else:
                 # Holdout: без случайных аугментаций (ровно 1 окно)
                 win = place_in_window(pcm, rng, it.is_positive)
-                window_list.append(win)
-                y_list.append(lbl_y)
-                y_l1_list.append(lbl_y1)
-                w_l1_list.append(weight_l1)
-                w_l2_list.append(weight_l2)
-                split_list.append(1)
+                collector.add(win, it.is_positive, it.is_confuser, split=1)
 
-        total_windows = len(window_list)
+        total_windows = len(collector)
         logger.info(f"Сформировано {total_windows} окон по 24000 сэмплов (1.5 с)")
 
         # 3. Расчет Mel-спектрограмм батчами
         batch_size = 256
         x_l2_batches: list[np.ndarray] = []
-        windows_arr = np.array(window_list, dtype=np.float32)
+        windows_arr = np.array(collector.windows, dtype=np.float32)
 
         for i in range(0, total_windows, batch_size):
             chunk = windows_arr[i : i + batch_size]
@@ -217,11 +221,11 @@ class PrepareStage:
         X_l2 = np.concatenate(x_l2_batches, axis=0) if x_l2_batches else np.zeros((0, 148, 40), dtype=np.float32)
         X_l1 = reduce_to_l1_batch(X_l2)
 
-        y = np.array(y_list, dtype=np.float32)
-        y_l1 = np.array(y_l1_list, dtype=np.float32)
-        w_l1 = np.array(w_l1_list, dtype=np.float32)
-        w_l2 = np.array(w_l2_list, dtype=np.float32)
-        split = np.array(split_list, dtype=np.uint8)
+        y = np.array(collector.y, dtype=np.float32)
+        y_l1 = np.array(collector.y_l1, dtype=np.float32)
+        w_l1 = np.array(collector.w_l1, dtype=np.float32)
+        w_l2 = np.array(collector.w_l2, dtype=np.float32)
+        split = np.array(collector.split, dtype=np.uint8)
 
         # 4. Сохранение в features.safetensors
         cache_dir = ctx.paths.artifacts_dir / "cache"
@@ -291,7 +295,7 @@ class PrepareStage:
                             cas_hash = entry.get("cas_hash")
                             if cas_hash:
                                 return ctx.artifacts.resolve(cas_hash)
-                    except Exception:
+                    except Exception:  # noqa: S112
                         continue
         return None
 

@@ -2,11 +2,9 @@ from __future__ import annotations
 
 import logging
 
-import pytest
-
 from wake_lab.artifacts import ArtifactStore
 from wake_lab.paths import PathGuard
-from wake_lab.stages.base import StageContext, StageUnavailableError
+from wake_lab.stages.base import StageContext
 from wake_lab.stages.registry import STAGES, get_stage, stage_names
 
 
@@ -29,8 +27,8 @@ def _context(tmp_path, cfg: dict | None = None) -> StageContext:
 
 
 def test_registry_lists_all_stages_in_stable_order() -> None:
-    assert stage_names() == ["harvest", "prepare", "promote", "report", "train"]
-    assert set(STAGES) == {"harvest", "prepare", "promote", "report", "train"}
+    assert stage_names() == ["calibrate", "harvest", "prepare", "promote", "report", "train"]
+    assert set(STAGES) == {"calibrate", "harvest", "prepare", "promote", "report", "train"}
 
 
 def test_every_stage_entry_has_required_fields() -> None:

@@ -34,19 +34,19 @@ pub struct PipelineConfig {
 impl Default for PipelineConfig {
     fn default() -> Self {
         Self {
-            epochs_l1: 20,
-            epochs_l2: 20,
+            epochs_l1: 60,
+            epochs_l2: 60,
             batch_size: 64,
             lr_l1: 1.5e-3,
             lr_l2: 1.0e-3,
             pos_weight_l1: 2.5,
             pos_weight_l2: 2.0,
-            th_hard: 0.35,
+            th_hard: 0.50,
             err_repeat: 3,
-            err_th_l2: 0.50,
+            err_th_l2: 0.65,
             seed: 42,
             neg_cap_l2: None,
-            k_easy: 0.0,
+            k_easy: 0.15,
             gamma_easy: 1.0,
         }
     }
@@ -75,7 +75,7 @@ pub fn error_repeat(
         let pass_gate = peak >= 500.0;
 
         let wrong_neg = y <= 0.01 && p >= th_err && pass_gate;
-        let wrong_pos = include_pos && (y >= 0.99 && p < 0.50);
+        let wrong_pos = include_pos && (y >= 0.99 && p < th_err);
 
         if wrong_neg || wrong_pos {
             for _ in 0..(repeat - 1) {
@@ -275,8 +275,8 @@ pub fn train_cascade(
     let val_p1 = predict_l1(&model_l1, val_ds, device, cfg.batch_size * 2);
     let val_p2 = predict_l2(&model_l2, val_ds, device, cfg.batch_size * 2);
 
-    let th_l1_nom = 0.40f64;
-    let th_l2_nom = 0.80f64;
+    let th_l1_nom = 0.50f64;
+    let th_l2_nom = 0.65f64;
 
     let mut hard_hits = 0;
     let mut mult_hits = 0;
@@ -285,7 +285,7 @@ pub fn train_cascade(
     let mut total_pos = 0;
     let mut total_neg = 0;
 
-    let mult_th = 0.35f64;
+    let mult_th = 0.325f64;
 
     for i in 0..val_ds.n_samples {
         let is_pos = val_ds.y[i] >= 0.99;

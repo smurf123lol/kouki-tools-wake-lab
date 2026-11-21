@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-import logging
 import time
-from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -60,9 +58,9 @@ class CalibrateStage:
 
         # 3D Сетка параметров каскада Multiplicative:
         # p1 >= l1_invoke & p2 >= l2_floor & (p1 * p2) >= combo_th
-        l1_grid = [0.25, 0.30, 0.35, 0.40, 0.45]
-        l2_floor_grid = [0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80]
-        combo_grid = [0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80]
+        l1_grid = [0.30, 0.35, 0.40, 0.45, 0.50, 0.55]
+        l2_floor_grid = [0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80]
+        combo_grid = [0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70]
 
         candidates = []
         for l1_inv in l1_grid:

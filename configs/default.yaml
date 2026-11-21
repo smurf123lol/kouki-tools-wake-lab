@@ -26,12 +26,13 @@ promote:
   random_state: 42
 
 train:
-  epochs_l1: 40
-  epochs_l2: 40
+  epochs_l1: 60
+  epochs_l2: 60
   batch_size: 64
   lr_l1: 0.0015
   lr_l2: 0.001
-  th_hard: 0.35
+  th_hard: 0.50
+  err_th_l2: 0.65
   err_repeat: 3
   seed: 42
   k_easy: 0.15

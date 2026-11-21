@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import json
-import logging
 import subprocess
 import time
-from pathlib import Path
 
 from .base import StageContext, StageName, StageResult
 
@@ -40,6 +38,7 @@ class TrainStage:
                 cwd=str(ctx.paths.project_root / "crates" / "wake-trainer"),
                 capture_output=True,
                 text=True,
+                check=False,
             )
             if build_res.returncode != 0:
                 raise RuntimeError(
@@ -52,12 +51,13 @@ class TrainStage:
 
         train_cfg = {**ctx.config.get("train", {}), **ctx.params}
         epochs_override = train_cfg.get("epochs")
-        epochs_l1 = int(epochs_override if epochs_override is not None else train_cfg.get("epochs_l1", 40))
-        epochs_l2 = int(epochs_override if epochs_override is not None else train_cfg.get("epochs_l2", 40))
+        epochs_l1 = int(epochs_override if epochs_override is not None else train_cfg.get("epochs_l1", 60))
+        epochs_l2 = int(epochs_override if epochs_override is not None else train_cfg.get("epochs_l2", 60))
         batch_size = int(train_cfg.get("batch_size", 64))
         lr_l1 = float(train_cfg.get("lr_l1", 1.5e-3))
         lr_l2 = float(train_cfg.get("lr_l2", 1.0e-3))
-        th_hard = float(train_cfg.get("th_hard", 0.35))
+        th_hard = float(train_cfg.get("th_hard", 0.50))
+        err_th_l2 = float(train_cfg.get("err_th_l2", 0.65))
         err_repeat = int(train_cfg.get("err_repeat", 3))
         seed = int(train_cfg.get("seed", 42))
         k_easy = float(train_cfg.get("k_easy", 0.15))
@@ -75,6 +75,7 @@ class TrainStage:
             "--lr-l2", str(lr_l2),
             "--th-hard", str(th_hard),
             "--err-repeat", str(err_repeat),
+            "--err-th-l2", str(err_th_l2),
             "--seed", str(seed),
             "--k-easy", str(k_easy),
             "--gamma-easy", str(gamma_easy),
@@ -87,7 +88,7 @@ class TrainStage:
             cmd.append("--sweep-theories")
 
         logger.info(f"Запуск GPU обучения: {' '.join(cmd)}")
-        run_res = subprocess.run(cmd, capture_output=True, text=True)
+        run_res = subprocess.run(cmd, capture_output=True, text=True, check=False)
         if run_res.returncode != 0:
             raise RuntimeError(
                 f"wake-trainer завершился с ошибкой (код {run_res.returncode}):\n{run_res.stderr}\n{run_res.stdout}"

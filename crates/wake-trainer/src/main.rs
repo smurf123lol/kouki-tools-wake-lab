@@ -23,11 +23,11 @@ struct Cli {
     out_dir: PathBuf,
 
     /// Число эпох обучения L1
-    #[arg(long, default_value_t = 20)]
+    #[arg(long, default_value_t = 60)]
     epochs_l1: usize,
 
     /// Число эпох обучения L2
-    #[arg(long, default_value_t = 20)]
+    #[arg(long, default_value_t = 60)]
     epochs_l2: usize,
 
     /// Размер батча
@@ -43,7 +43,7 @@ struct Cli {
     lr_l2: f64,
 
     /// Порог L1 для отбора hard negatives
-    #[arg(long, default_value_t = 0.35)]
+    #[arg(long, default_value_t = 0.50)]
     th_hard: f32,
 
     /// Кратность повтора окон с ошибками (0 или 1 — выключено)
@@ -51,7 +51,7 @@ struct Cli {
     err_repeat: usize,
 
     /// Порог ошибки L2 для перевзвеса
-    #[arg(long, default_value_t = 0.50)]
+    #[arg(long, default_value_t = 0.65)]
     err_th_l2: f32,
 
     /// Базовый сид генератора случайных чисел
@@ -63,7 +63,7 @@ struct Cli {
     neg_cap_l2: Option<usize>,
 
     /// Множитель динамического переноса легких негативов (0.0 = строгая изоляция)
-    #[arg(long, default_value_t = 0.0)]
+    #[arg(long, default_value_t = 0.15)]
     k_easy: f32,
 
     /// Степень уверенности для динамического переноса (1.0 = линейный, 2.0 = квадратичный)
