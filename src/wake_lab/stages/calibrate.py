@@ -24,7 +24,7 @@ class CalibrateStage:
         warnings: list[str] = []
 
         cal_cfg = {**ctx.config.get("calibrate", {}), **ctx.params}
-        models_dir_override = cal_cfg.get("models_dir")
+        models_dir_override = cal_cfg.get("models_dir") or ctx.config.get("train", {}).get("out_dir")
         models_dir = (ctx.paths.project_root / models_dir_override).resolve() if models_dir_override else ctx.paths.artifacts_dir / "models"
         preds_path = models_dir / "predictions.json"
 

@@ -1,0 +1,12 @@
+project_root: .
+
+paths:
+  baseline: data/baseline
+  telemetry_labeled: data/telemetry_harvested
+  artifacts: artifacts
+
+api:
+  base_url: http://127.0.0.1:5300
+
+calibrate:
+  models_dir: artifacts/models/t14_80ep_th030/T14-k020-th030-80ep

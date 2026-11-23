@@ -1,0 +1,64 @@
+# Эксперимент: 80 эпох для T14-k015-th030 и T14-k020-th030
+# Проверка гипотезы о накоплении качественных околопороговых ошибок L1 для L2
+# Фиксировано: th_hard=0.30, gamma_easy=2.0, conf_weight_l2=1.3, pos_weight=(2.5, 2.0), conf_cap=0.70
+
+project_root: .
+
+paths:
+  baseline: data/baseline
+  telemetry_labeled: data/telemetry_harvested
+  artifacts: artifacts
+
+api:
+  base_url: http://127.0.0.1:5300
+  timeout_s: 10
+  retries: 2
+
+baseline:
+  manifest: manifest.jsonl
+  sha256: null
+
+promote:
+  categories:
+    TP: positive
+    CONFUSER: negative_confuser
+    SPEECH_NEG: negative_speech
+    NOISE: negative_noise
+  dedup_iou_threshold: 0.8
+  confuser_ratio: 0.15
+  test_size: 0.2
+  random_state: 42
+
+train:
+  out_dir: artifacts/models/t14_80ep_th030
+  batch_size: 64
+  lr_l1: 0.0015
+  lr_l2: 0.0010
+  err_repeat: 2
+  err_th_l2: 0.65
+  seed: 42
+  epochs_l1: 80
+  epochs_l2: 80
+  th_hard: 0.30
+  gamma_easy: 2.0
+  conf_weight_l2: 1.3
+  pos_weight_l1: 2.5
+  pos_weight_l2: 2.0
+  conf_cap_ratio: 0.70
+
+  theories:
+    - id: T14-k015-th030-80ep
+      name: "T14 (k=0.15, th=0.30) - 80ep"
+      hypothesis: "Топ-1 свипа (k=0.15) при 80 эпохах обучения для закрепления околопороговых ошибок L1"
+      k_easy: 0.15
+      th_hard: 0.30
+
+    - id: T14-k020-th030-80ep
+      name: "T14 (k=0.20, th=0.30) - 80ep"
+      hypothesis: "Конфигурация k=0.20 при 80 эпохах — увеличенный трансфер легких негативов для баланса L2"
+      k_easy: 0.20
+      th_hard: 0.30
+
+calibrate:
+  models_dir: artifacts/models/t14_80ep_th030
+

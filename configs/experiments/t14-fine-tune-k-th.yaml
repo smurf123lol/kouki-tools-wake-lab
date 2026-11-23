@@ -1,0 +1,116 @@
+# Эксперимент: Тонкая настройка T14 (Synergy Quad) по k_easy и th_hard
+# Варьируем k_easy (0.15, 0.20) и th_hard (0.20, 0.25, 0.30, 0.35, 0.40) на 20 эпохах
+# Фиксировано: gamma_easy=2.0, conf_weight_l2=1.3, pos_weight=(2.5, 2.0), conf_cap=0.70
+
+project_root: .
+
+paths:
+  baseline: data/baseline
+  telemetry_labeled: data/telemetry_harvested
+  artifacts: artifacts
+
+api:
+  base_url: http://127.0.0.1:5300
+  timeout_s: 10
+  retries: 2
+
+baseline:
+  manifest: manifest.jsonl
+  sha256: null
+
+promote:
+  categories:
+    TP: positive
+    CONFUSER: negative_confuser
+    SPEECH_NEG: negative_speech
+    NOISE: negative_noise
+  dedup_iou_threshold: 0.8
+  confuser_ratio: 0.15
+  test_size: 0.2
+  random_state: 42
+
+train:
+  out_dir: artifacts/models/t14_fine_tune_sweep
+  batch_size: 64
+  lr_l1: 0.0015
+  lr_l2: 0.0010
+  err_repeat: 2
+  err_th_l2: 0.65
+  seed: 42
+  epochs_l1: 20
+  epochs_l2: 20
+  gamma_easy: 2.0
+  conf_weight_l2: 1.3
+  pos_weight_l1: 2.5
+  pos_weight_l2: 2.0
+  conf_cap_ratio: 0.70
+
+  theories:
+    # --- Сетка k_easy = 0.15 ---
+    - id: T14-k015-th020
+      name: "T14 (k=0.15, th=0.20)"
+      hypothesis: "Низкий порог отбора сложных негативов th=0.20 при k=0.15"
+      k_easy: 0.15
+      th_hard: 0.20
+
+    - id: T14-k015-th025
+      name: "T14 (k=0.15, th=0.25)"
+      hypothesis: "Умеренно-низкий порог th=0.25 при k=0.15"
+      k_easy: 0.15
+      th_hard: 0.25
+
+    - id: T14-k015-th030
+      name: "T14 (k=0.15, th=0.30)"
+      hypothesis: "Сбалансированный порог th=0.30 при k=0.15"
+      k_easy: 0.15
+      th_hard: 0.30
+
+    - id: T14-k015-th035
+      name: "T14 (k=0.15, th=0.35)"
+      hypothesis: "Исходный порог T14 (th=0.35) с пониженным k=0.15"
+      k_easy: 0.15
+      th_hard: 0.35
+
+    - id: T14-k015-th040
+      name: "T14 (k=0.15, th=0.40)"
+      hypothesis: "Повышенный порог th=0.40 при k=0.15"
+      k_easy: 0.15
+      th_hard: 0.40
+
+    # --- Сетка k_easy = 0.20 ---
+    - id: T14-k020-th020
+      name: "T14 (k=0.20, th=0.20)"
+      hypothesis: "Низкий порог th=0.20 при k=0.20"
+      k_easy: 0.20
+      th_hard: 0.20
+
+    - id: T14-k020-th025
+      name: "T14 (k=0.20, th=0.25)"
+      hypothesis: "Умеренно-низкий порог th=0.25 при k=0.20"
+      k_easy: 0.20
+      th_hard: 0.25
+
+    - id: T14-k020-th030
+      name: "T14 (k=0.20, th=0.30)"
+      hypothesis: "Сбалансированный порог th=0.30 при k=0.20"
+      k_easy: 0.20
+      th_hard: 0.30
+
+    - id: T14-k020-th035
+      name: "T14 (k=0.20, th=0.35)"
+      hypothesis: "Исходный порог T14 (th=0.35) с промежуточным k=0.20"
+      k_easy: 0.20
+      th_hard: 0.35
+
+    - id: T14-k020-th040
+      name: "T14 (k=0.20, th=0.40)"
+      hypothesis: "Повышенный порог th=0.40 при k=0.20"
+      k_easy: 0.20
+      th_hard: 0.40
+
+    # --- Контрольный референс T14 (оригинал на 20 эпохах) ---
+    - id: T14-k025-th035-ref
+      name: "T14-REF (k=0.25, th=0.35)"
+      hypothesis: "Точная референсная точка T14 для сопоставления на 20 эпохах"
+      k_easy: 0.25
+      th_hard: 0.35
