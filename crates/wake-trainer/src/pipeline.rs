@@ -18,6 +18,8 @@ pub struct PipelineConfig {
     pub lr_l2: f64,
     pub pos_weight_l1: f32,
     pub pos_weight_l2: f32,
+    pub conf_weight_l2: f32,
+    pub conf_cap_ratio: f32,
     pub th_hard: f32,
     pub err_repeat: usize,
     pub err_th_l2: f32,
@@ -41,6 +43,8 @@ impl Default for PipelineConfig {
             lr_l2: 1.0e-3,
             pos_weight_l1: 2.5,
             pos_weight_l2: 2.0,
+            conf_weight_l2: 1.0,
+            conf_cap_ratio: 0.70,
             th_hard: 0.50,
             err_repeat: 3,
             err_th_l2: 0.65,
@@ -98,12 +102,9 @@ pub fn error_repeat(
 pub fn mine_hard_negatives(
     model_l1: &WakeNetL1,
     train_ds: &Dataset,
-    th_hard: f32,
+    cfg: &PipelineConfig,
     device: &Device,
     batch_size: usize,
-    neg_cap: Option<usize>,
-    k_easy: f32,
-    gamma_easy: f32,
 ) -> Dataset {
     let p1 = predict_l1(model_l1, train_ds, device, batch_size);
 
@@ -122,17 +123,17 @@ pub fn mine_hard_negatives(
         } else if is_confuser {
             conf_indices.push(i);
         } else if is_bg {
-            if p1[i] >= th_hard {
+            if p1[i] >= cfg.th_hard {
                 bg_hard_indices.push(i);
-            } else if k_easy > 0.0 {
+            } else if cfg.k_easy > 0.0 {
                 bg_easy_indices.push(i);
             }
         }
     }
 
     let n_pos = pos_indices.len();
-    let effective_cap = neg_cap.unwrap_or_else(|| n_pos * 3 / 2);
-    let cap_conf = ((effective_cap as f32) * 0.70) as usize;
+    let effective_cap = cfg.neg_cap_l2.unwrap_or_else(|| n_pos * 3 / 2);
+    let cap_conf = ((effective_cap as f32) * cfg.conf_cap_ratio).round() as usize;
     let cap_hard = effective_cap.saturating_sub(cap_conf).max(1);
     let cap_easy = cap_hard;
 
@@ -153,22 +154,22 @@ pub fn mine_hard_negatives(
     }
 
     // При k_easy > 0: сортируем легкие негативы по убыванию p1 (берем околопороговые near-miss окна)
-    if k_easy > 0.0 && bg_easy_indices.len() > cap_easy {
+    if cfg.k_easy > 0.0 && bg_easy_indices.len() > cap_easy {
         bg_easy_indices.sort_by(|&a, &b| p1[b].partial_cmp(&p1[a]).unwrap_or(std::cmp::Ordering::Equal));
         bg_easy_indices.truncate(cap_easy);
     }
 
-    println!("  L2 майнинг негативов (th_hard = {:.2}, k_easy = {:.2}, gamma = {:.2}):",
-             th_hard, k_easy, gamma_easy);
+    println!("  L2 майнинг негативов (th_hard = {:.2}, k_easy = {:.2}, gamma = {:.2}, conf_ratio = {:.2}, w_conf = {:.2}):",
+             cfg.th_hard, cfg.k_easy, cfg.gamma_easy, cfg.conf_cap_ratio, cfg.conf_weight_l2);
     println!("    Позитивов: {}, Конфузеров: {}/{} (кап {}), Hard BG: {}/{} (кап {}), Easy BG: {}/{} (кап {})",
              pos_indices.len(), conf_indices.len(), orig_conf, cap_conf,
              bg_hard_indices.len(), orig_bg_hard, cap_hard,
-             if k_easy > 0.0 { bg_easy_indices.len() } else { 0 }, orig_bg_easy, cap_easy);
+             if cfg.k_easy > 0.0 { bg_easy_indices.len() } else { 0 }, orig_bg_easy, cap_easy);
 
     let mut keep_indices = pos_indices;
     keep_indices.extend(conf_indices);
     keep_indices.extend(bg_hard_indices);
-    if k_easy > 0.0 {
+    if cfg.k_easy > 0.0 {
         keep_indices.extend(bg_easy_indices);
     }
     keep_indices.sort();
@@ -176,19 +177,23 @@ pub fn mine_hard_negatives(
     let mut l2_ds = train_ds.filter_by_indices(&keep_indices);
 
     // Динамическое взвешивание образцов для L2:
-    // Позитивы и конфузеры сохраняют w_l2 = 1.0.
+    // Позитивы сохраняют w_l2 = 1.0.
+    // Конфузеры получают cfg.conf_weight_l2.
     // Фоновые hard negatives (p1 >= th_hard): вес 1.0.
     // Фоновые easy negatives (p1 < th_hard при k_easy > 0): динамический вес k_easy * (p1 / th_hard)^gamma_easy.
     for i in 0..l2_ds.n_samples {
         let orig_idx = keep_indices[i];
+        let is_confuser = l2_ds.y[i] <= 0.01 && l2_ds.y_l1[i] > 0.01;
         let is_bg = l2_ds.y[i] <= 0.01 && l2_ds.y_l1[i] <= 0.01;
-        if is_bg {
+        if is_confuser {
+            l2_ds.w_l2[i] = cfg.conf_weight_l2;
+        } else if is_bg {
             let p = p1[orig_idx];
-            if p >= th_hard {
+            if p >= cfg.th_hard {
                 l2_ds.w_l2[i] = 1.0;
-            } else if k_easy > 0.0 {
-                let ratio = (p / th_hard).clamp(0.0, 1.0);
-                l2_ds.w_l2[i] = k_easy * ratio.powf(gamma_easy);
+            } else if cfg.k_easy > 0.0 {
+                let ratio = (p / cfg.th_hard).clamp(0.0, 1.0);
+                l2_ds.w_l2[i] = cfg.k_easy * ratio.powf(cfg.gamma_easy);
             }
         }
     }
@@ -234,12 +239,9 @@ pub fn train_cascade(
     let train_l2_ds = mine_hard_negatives(
         &model_l1,
         train_ds,
-        cfg.th_hard,
+        cfg,
         device,
         cfg.batch_size * 2,
-        cfg.neg_cap_l2,
-        cfg.k_easy,
-        cfg.gamma_easy,
     );
     println!("  L2 train dataset: {} окон", train_l2_ds.n_samples);
 
@@ -391,6 +393,10 @@ pub struct TheoryResult {
     pub k_easy: f32,
     pub gamma_easy: f32,
     pub th_hard: f32,
+    pub pos_weight_l1: f32,
+    pub pos_weight_l2: f32,
+    pub conf_weight_l2: f32,
+    pub conf_cap_ratio: f32,
     pub err_repeat: usize,
     pub epochs_l1: usize,
     pub epochs_l2: usize,
@@ -406,56 +412,100 @@ pub struct TheoriesBenchmarkReport {
     pub results: Vec<TheoryResult>,
 }
 
-pub fn get_theories_pool() -> Vec<(&'static str, &'static str, &'static str, PipelineConfig)> {
-    let base = PipelineConfig::default();
+pub fn get_theories_pool(epochs_l1: usize, epochs_l2: usize) -> Vec<(&'static str, &'static str, &'static str, PipelineConfig)> {
+    let base = PipelineConfig {
+        epochs_l1,
+        epochs_l2,
+        err_repeat: 2,
+        ..PipelineConfig::default()
+    };
     vec![
+        // --- Блок 1: Подходы к k-изоляции ---
         (
-            "T1-baseline-iso",
+            "T01-iso-baseline",
             "Строгая изоляция (Baseline)",
-            "Строгое отсечение легких негативов (k_easy=0.0). Только hard negatives L1 и конфузеры попадают в L2.",
+            "Строгое отсечение легких негативов (k_easy=0.0). В L2 попадают только hard negatives L1 и конфузеры.",
             PipelineConfig { k_easy: 0.0, ..base.clone() }
         ),
         (
-            "T2-dyn-linear-015",
-            "Динамический перенос (Linear k=0.15)",
-            "Мягкий перенос легких негативов с линейным взвешиванием w = 0.15 * (p1/th). Градиент near-miss окон без засорения шумом.",
+            "T02-iso-wide-th035",
+            "Изоляция + широкий майнинг (th=0.35)",
+            "Изоляция (k=0.0), но порог L1 снижен до 0.35 для захвата большего пула hard negatives в L2.",
+            PipelineConfig { k_easy: 0.0, th_hard: 0.35, ..base.clone() }
+        ),
+        (
+            "T03-iso-strict-th060",
+            "Изоляция + узкий майнинг (th=0.60)",
+            "Изоляция (k=0.0), в L2 допускаются только самые критичные пробои L1 (p1 >= 0.60).",
+            PipelineConfig { k_easy: 0.0, th_hard: 0.60, ..base.clone() }
+        ),
+        (
+            "T04-dyn-lin-k008",
+            "Ультра-мягкий перенос (Linear k=0.08)",
+            "Слабая подпитка фонового градиента (w <= 0.08 * p1/th). Минимальное возмущение разделения.",
+            PipelineConfig { k_easy: 0.08, gamma_easy: 1.0, ..base.clone() }
+        ),
+        (
+            "T05-dyn-lin-k015",
+            "Стандартный перенос (Linear k=0.15)",
+            "Базовый динамический перенос легких негативов: линейная шкала уверенности до 0.15.",
             PipelineConfig { k_easy: 0.15, gamma_easy: 1.0, ..base.clone() }
         ),
         (
-            "T3-dyn-linear-030",
-            "Динамический перенос (Linear k=0.30)",
-            "Увеличенный вес легких негативов (k=0.30). Проверка границы между подавлением ложных срабатываний и размытием разделения.",
+            "T06-dyn-lin-k030",
+            "Агрессивный перенос (Linear k=0.30)",
+            "Повышенный вес легких негативов (до 0.30). Проверка границы между подавлением шума и размытием.",
             PipelineConfig { k_easy: 0.30, gamma_easy: 1.0, ..base.clone() }
         ),
         (
-            "T4-dyn-quad-030",
-            "Динамический перенос (Quadratic gamma=2.0)",
-            "Квадратичное затухание w = 0.30 * (p1/th)^2. Фокус строго на околопороговых окнах p1 in [0.25, 0.35], тихое аудио с p1<0.1 получает w < 0.02.",
-            PipelineConfig { k_easy: 0.30, gamma_easy: 2.0, ..base.clone() }
+            "T07-dyn-quad-k020",
+            "Квадратичный фокус (Quad k=0.20, gamma=2.0)",
+            "Квадратичное затухание w = 0.20 * (p1/th)^2: фокус строго на near-miss окнах у границы.",
+            PipelineConfig { k_easy: 0.20, gamma_easy: 2.0, ..base.clone() }
         ),
         (
-            "T5-th-hard-030",
-            "Широкий порог майнинга (th=0.30)",
-            "Снижение порога L1 до 0.30 захватывает в L2 больше фоновых кандидатов без изменения архитектуры.",
-            PipelineConfig { th_hard: 0.30, k_easy: 0.0, ..base.clone() }
+            "T08-dyn-quad-k035",
+            "Квадратичный усиленный (Quad k=0.35, gamma=2.0)",
+            "Сильный градиент на самой границе срабатывания при быстром квадратичном затухании в тишине.",
+            PipelineConfig { k_easy: 0.35, gamma_easy: 2.0, ..base.clone() }
         ),
         (
-            "T6-th-hard-040",
-            "Узкий порог майнинга (th=0.40)",
-            "Повышение порога L1 до 0.40 концентрирует L2 только на самых опасных пробоях.",
-            PipelineConfig { th_hard: 0.40, k_easy: 0.0, ..base.clone() }
+            "T09-dyn-pow15-k015",
+            "Промежуточная степень (gamma=1.5, k=0.15)",
+            "Степенной перенос между линейным и квадратичным: компромисс ширины охвата и подавления шума.",
+            PipelineConfig { k_easy: 0.15, gamma_easy: 1.5, ..base.clone() }
+        ),
+
+        // --- Блок 2: Настройка весов категорий (Positive, Confuser, Background) ---
+        (
+            "T10-weight-pos-boost",
+            "Приоритет активации (PosWeight 3.5 / 3.0)",
+            "Увеличенный штраф за пропуск слова: pos_weight L1=3.5, L2=3.0 для максимизации Recall тихого голоса.",
+            PipelineConfig { pos_weight_l1: 3.5, pos_weight_l2: 3.0, k_easy: 0.15, ..base.clone() }
         ),
         (
-            "T7-err-repeat-2",
-            "Мягкий Error Repeat (x2)",
-            "Снижение кратности повтора ошибок с 3 до 2 для предотвращения переобучения на единичных артефактах.",
-            PipelineConfig { err_repeat: 2, k_easy: 0.0, ..base.clone() }
+            "T11-weight-pos-suppress",
+            "Приоритет чистоты (PosWeight 1.8 / 1.5)",
+            "Сниженный вес позитивов для жесткого подавления ложных срабатываний (фокус на Precision).",
+            PipelineConfig { pos_weight_l1: 1.8, pos_weight_l2: 1.5, k_easy: 0.15, ..base.clone() }
         ),
         (
-            "T8-dyn-quad-aggr",
-            "Комбинированная: th=0.30 + Quad k=0.20",
-            "Синергия расширенного пула hard negatives (th=0.30) с квадратичным динамическим переносом borderline-окон.",
-            PipelineConfig { th_hard: 0.30, k_easy: 0.20, gamma_easy: 2.0, ..base.clone() }
+            "T12-weight-confuser-15",
+            "Усиленный штраф конфузеров (w_conf=1.5)",
+            "Повышенный вес конфузеров в L2 лоссе (w=1.5) для подавления срабатываний на похожие слова.",
+            PipelineConfig { conf_weight_l2: 1.5, k_easy: 0.15, ..base.clone() }
+        ),
+        (
+            "T13-pool-conf-heavy",
+            "Высокая доля конфузеров в пуле (85%)",
+            "Увеличение квоты конфузеров в L2 с 70% до 85% от объема негативов.",
+            PipelineConfig { conf_cap_ratio: 0.85, k_easy: 0.15, ..base.clone() }
+        ),
+        (
+            "T14-synergy-quad-th035",
+            "Синергия: th=0.35 + Quad k=0.25 + w_conf=1.3",
+            "Комплексная связка: широкий майнинг hard negatives, квадратичный динамический перенос и упор на конфузеры.",
+            PipelineConfig { th_hard: 0.35, k_easy: 0.25, gamma_easy: 2.0, conf_weight_l2: 1.3, ..base.clone() }
         ),
     ]
 }
@@ -463,16 +513,18 @@ pub fn get_theories_pool() -> Vec<(&'static str, &'static str, &'static str, Pip
 pub fn run_theories_sweep<P: AsRef<Path>, Q: AsRef<Path>>(
     features_path: P,
     out_dir: Q,
+    epochs_l1: usize,
+    epochs_l2: usize,
     device: &Device,
 ) -> Result<TheoriesBenchmarkReport, Box<dyn std::error::Error>> {
     println!("===============================================================================");
-    println!(">>> ЗАПУСК СВИПА ТЕОРИЙ WAKE-WORD (GPU БЕНЧМАРК ГИПОТЕЗ) <<<");
+    println!(">>> ЗАПУСК СВИПА ТЕОРИЙ WAKE-WORD (GPU БЕНЧМАРК ГИПОТЕЗ: {} эпох) <<<", epochs_l1);
     println!("===============================================================================");
     let full_ds = Dataset::load_safetensors(features_path)?;
     let (train_ds, val_ds) = full_ds.split_train_val();
     println!("Выборка: train = {} окон, val/holdout = {} окон\n", train_ds.n_samples, val_ds.n_samples);
 
-    let pool = get_theories_pool();
+    let pool = get_theories_pool(epochs_l1, epochs_l2);
     let total = pool.len();
 
     let mut results = Vec::new();
@@ -484,8 +536,8 @@ pub fn run_theories_sweep<P: AsRef<Path>, Q: AsRef<Path>>(
         println!("\n-------------------------------------------------------------------------------");
         println!(">>> [ТЕОРИЯ {}/{}] {} ({})", idx + 1, total, name, id);
         println!("    Гипотеза: {}", hypothesis);
-        println!("    Параметры: k_easy = {:.2}, gamma = {:.2}, th_hard = {:.2}, err_repeat = {}",
-                 cfg.k_easy, cfg.gamma_easy, cfg.th_hard, cfg.err_repeat);
+        println!("    Параметры: k_easy = {:.2}, gamma = {:.2}, th_hard = {:.2}, pos_w = {:.1}/{:.1}, conf_w = {:.2}, conf_ratio = {:.2}",
+                 cfg.k_easy, cfg.gamma_easy, cfg.th_hard, cfg.pos_weight_l1, cfg.pos_weight_l2, cfg.conf_weight_l2, cfg.conf_cap_ratio);
         println!("-------------------------------------------------------------------------------");
 
         let (m1, m2, metrics, preds) = train_cascade(&train_ds, &val_ds, &cfg, device);
@@ -509,6 +561,10 @@ pub fn run_theories_sweep<P: AsRef<Path>, Q: AsRef<Path>>(
             k_easy: cfg.k_easy,
             gamma_easy: cfg.gamma_easy,
             th_hard: cfg.th_hard,
+            pos_weight_l1: cfg.pos_weight_l1,
+            pos_weight_l2: cfg.pos_weight_l2,
+            conf_weight_l2: cfg.conf_weight_l2,
+            conf_cap_ratio: cfg.conf_cap_ratio,
             err_repeat: cfg.err_repeat,
             epochs_l1: cfg.epochs_l1,
             epochs_l2: cfg.epochs_l2,
@@ -538,14 +594,14 @@ pub fn run_theories_sweep<P: AsRef<Path>, Q: AsRef<Path>>(
 
     // Сводная таблица Markdown
     let mut md = String::new();
-    md.push_str("# Сводный бенчмарк теорий Wake-Word (GPU)\n\n");
-    md.push_str("| № | ID | Теория | $k_{easy}$ | $\\gamma$ | $th_{hard}$ | Rep | L1 AUC | L2 AUC | Hard Rec | Hard FPR | Mult Rec | Mult FPR | Счёт |\n");
-    md.push_str("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n");
+    md.push_str(&format!("# Сводный бенчмарк теорий Wake-Word (GPU, {} эпох)\n\n", epochs_l1));
+    md.push_str("| № | ID | Теория | $k_{easy}$ | $\\gamma$ | $th_{hard}$ | $pos_{L1/L2}$ | $w_{conf}$ | L1 AUC | L2 AUC | Hard Rec | Hard FPR | Mult Rec | Mult FPR | Счёт |\n");
+    md.push_str("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n");
 
     for (i, r) in results.iter().enumerate() {
         let is_best = if r.id == best_theory_id { " **(WIN)**" } else { "" };
         md.push_str(&format!(
-            "| {} | `{}`{} | {} | {:.2} | {:.1} | {:.2} | {} | {:.4} | {:.4} | {:.2}% | {:.2}% | {:.2}% | {:.2}% | **{:.2}** |\n",
+            "| {} | `{}`{} | {} | {:.2} | {:.1} | {:.2} | {:.1}/{:.1} | {:.1} | {:.4} | {:.4} | {:.2}% | {:.2}% | {:.2}% | {:.2}% | **{:.2}** |\n",
             i + 1,
             r.id,
             is_best,
@@ -553,7 +609,9 @@ pub fn run_theories_sweep<P: AsRef<Path>, Q: AsRef<Path>>(
             r.k_easy,
             r.gamma_easy,
             r.th_hard,
-            r.err_repeat,
+            r.pos_weight_l1,
+            r.pos_weight_l2,
+            r.conf_weight_l2,
             r.metrics.l1.auc,
             r.metrics.l2.auc,
             r.metrics.hard_cascade_recall * 100.0,

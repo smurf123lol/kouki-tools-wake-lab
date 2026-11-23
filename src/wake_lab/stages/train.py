@@ -62,6 +62,10 @@ class TrainStage:
         seed = int(train_cfg.get("seed", 42))
         k_easy = float(train_cfg.get("k_easy", 0.15))
         gamma_easy = float(train_cfg.get("gamma_easy", 1.0))
+        pos_weight_l1 = float(train_cfg.get("pos_weight_l1", 2.5))
+        pos_weight_l2 = float(train_cfg.get("pos_weight_l2", 2.0))
+        conf_weight_l2 = float(train_cfg.get("conf_weight_l2", 1.0))
+        conf_cap_ratio = float(train_cfg.get("conf_cap_ratio", 0.70))
         sweep_theories = bool(train_cfg.get("sweep_theories", False))
 
         cmd = [
@@ -79,6 +83,10 @@ class TrainStage:
             "--seed", str(seed),
             "--k-easy", str(k_easy),
             "--gamma-easy", str(gamma_easy),
+            "--pos-weight-l1", str(pos_weight_l1),
+            "--pos-weight-l2", str(pos_weight_l2),
+            "--conf-weight-l2", str(conf_weight_l2),
+            "--conf-cap-ratio", str(conf_cap_ratio),
         ]
 
         if "neg_cap_l2" in train_cfg:
@@ -115,22 +123,35 @@ class TrainStage:
             except Exception as e:
                 logger.warning(f"Не удалось прочесть metrics.json: {e}")
 
+        bench_json = out_dir / "theories_benchmark.json"
+        bench_md = out_dir / "theories_benchmark.md"
+        if bench_json.exists():
+            ctx.artifacts.put_file(bench_json, name="theories_benchmark.json")
+        if bench_md.exists():
+            ctx.artifacts.put_file(bench_md, name="theories_benchmark.md")
+
         elapsed = time.monotonic() - started
         logger.info(
             f"Стадия train успешно завершена за {elapsed:.2f}с: "
             f"L1 CAS {ref_l1.cas_hash[:12]}, L2 CAS {ref_l2.cas_hash[:12]}"
         )
 
+        outputs = {
+            "l1_header": str(l1_header),
+            "l2_header": str(l2_header),
+            "l1_cas_hash": ref_l1.cas_hash,
+            "l2_cas_hash": ref_l2.cas_hash,
+            "metrics_file": str(metrics_file),
+        }
+        if bench_json.exists():
+            outputs["theories_benchmark_json"] = str(bench_json)
+        if bench_md.exists():
+            outputs["theories_benchmark_md"] = str(bench_md)
+
         return StageResult(
             stage=self.name,
             status="ok",
-            outputs={
-                "l1_header": str(l1_header),
-                "l2_header": str(l2_header),
-                "l1_cas_hash": ref_l1.cas_hash,
-                "l2_cas_hash": ref_l2.cas_hash,
-                "metrics_file": str(metrics_file),
-            },
+            outputs=outputs,
             metrics=metrics_data,
             warnings=[],
             elapsed_s=elapsed,

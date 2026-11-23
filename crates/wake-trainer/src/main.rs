@@ -69,6 +69,22 @@ struct Cli {
     /// Степень уверенности для динамического переноса (1.0 = линейный, 2.0 = квадратичный)
     #[arg(long, default_value_t = 1.0)]
     gamma_easy: f32,
+
+    /// Вес положительного класса в L1 лоссе
+    #[arg(long, default_value_t = 2.5)]
+    pos_weight_l1: f32,
+
+    /// Вес положительного класса в L2 лоссе
+    #[arg(long, default_value_t = 2.0)]
+    pos_weight_l2: f32,
+
+    /// Вес конфузеров в L2 лоссе
+    #[arg(long, default_value_t = 1.0)]
+    conf_weight_l2: f32,
+
+    /// Доля конфузеров в пуле негативов L2
+    #[arg(long, default_value_t = 0.70)]
+    conf_cap_ratio: f32,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -94,7 +110,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Выбран вычислительный дискретный GPU: {:?}", device);
 
     if cli.sweep_theories {
-        run_theories_sweep(&cli.features, &cli.out_dir, &device)?;
+        run_theories_sweep(&cli.features, &cli.out_dir, cli.epochs_l1, cli.epochs_l2, &device)?;
         return Ok(());
     }
 
@@ -104,8 +120,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         batch_size: cli.batch_size,
         lr_l1: cli.lr_l1,
         lr_l2: cli.lr_l2,
-        pos_weight_l1: 2.5,
-        pos_weight_l2: 2.0,
+        pos_weight_l1: cli.pos_weight_l1,
+        pos_weight_l2: cli.pos_weight_l2,
+        conf_weight_l2: cli.conf_weight_l2,
+        conf_cap_ratio: cli.conf_cap_ratio,
         th_hard: cli.th_hard,
         err_repeat: cli.err_repeat,
         err_th_l2: cli.err_th_l2,
