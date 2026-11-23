@@ -1,0 +1,69 @@
+# Пример конфигурации произвольного свипа теорий (без правок исходного кода)
+project_root: .
+
+paths:
+  baseline: data/baseline
+  telemetry_labeled: data/telemetry_harvested
+  artifacts: artifacts
+
+api:
+  base_url: http://127.0.0.1:5300
+  timeout_s: 10
+  retries: 2
+
+baseline:
+  manifest: manifest.jsonl
+  sha256: null
+
+promote:
+  categories:
+    TP: positive
+    CONFUSER: negative_confuser
+    SPEECH_NEG: negative_speech
+    NOISE: negative_noise
+  dedup_iou_threshold: 0.8
+  confuser_ratio: 0.15
+  test_size: 0.2
+  random_state: 42
+
+train:
+  out_dir: artifacts/models/custom_sweep
+  batch_size: 64
+  err_repeat: 2
+  seed: 42
+
+  # Произвольный список гипотез. Любой разработчик или агент может
+  # менять/добавлять любые параметры без перекомпиляции Rust или правок Python!
+  theories:
+    - id: EXP-01-synergy
+      name: "Квадратичный перенос + конфузеры"
+      hypothesis: "Базовый пресет T14 (th=0.35, gamma=2.0, w_conf=1.3)"
+      epochs_l1: 15
+      epochs_l2: 15
+      th_hard: 0.35
+      k_easy: 0.25
+      gamma_easy: 2.0
+      conf_weight_l2: 1.3
+      conf_cap_ratio: 0.70
+
+    - id: EXP-02-confuser-heavy
+      name: "Повышенный штраф конфузеров w=1.7"
+      hypothesis: "Экстремальный штраф за похожие слова для абсолютной чистоты"
+      epochs_l1: 15
+      epochs_l2: 15
+      th_hard: 0.40
+      k_easy: 0.20
+      gamma_easy: 2.0
+      conf_weight_l2: 1.7
+      conf_cap_ratio: 0.75
+
+    - id: EXP-03-soft-linear
+      name: "Мягкий линейный перенос k=0.10"
+      hypothesis: "Линейная передача околопорогового градиента без квадратичного затухания"
+      epochs_l1: 15
+      epochs_l2: 15
+      th_hard: 0.50
+      k_easy: 0.10
+      gamma_easy: 1.0
+      conf_weight_l2: 1.2
+      conf_cap_ratio: 0.70

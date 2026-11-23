@@ -1,0 +1,48 @@
+# Пресет Топ-1: Синергия (T14) — максимальный баланс качества, 80 эпох
+project_root: .
+
+paths:
+  baseline: data/baseline
+  telemetry_labeled: data/telemetry_harvested
+  artifacts: artifacts
+
+api:
+  base_url: http://127.0.0.1:5300
+  timeout_s: 10
+  retries: 2
+
+baseline:
+  manifest: manifest.jsonl
+  sha256: null
+
+promote:
+  categories:
+    TP: positive
+    CONFUSER: negative_confuser
+    SPEECH_NEG: negative_speech
+    NOISE: negative_noise
+  dedup_iou_threshold: 0.8
+  confuser_ratio: 0.15
+  test_size: 0.2
+  random_state: 42
+
+train:
+  out_dir: artifacts/models/production_synergy
+  epochs_l1: 80
+  epochs_l2: 80
+  batch_size: 64
+  lr_l1: 0.0015
+  lr_l2: 0.0010
+  th_hard: 0.35
+  k_easy: 0.25
+  gamma_easy: 2.0
+  pos_weight_l1: 2.5
+  pos_weight_l2: 2.0
+  conf_weight_l2: 1.3
+  conf_cap_ratio: 0.70
+  err_repeat: 2
+  err_th_l2: 0.65
+  seed: 42
+
+calibrate:
+  models_dir: artifacts/models/production_synergy

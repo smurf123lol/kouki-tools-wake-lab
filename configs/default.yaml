@@ -1,12 +1,13 @@
+# Базовая конфигурация конвейера wake-lab (Kouki Wake Word)
 project_root: .
 
 paths:
-  baseline: data/baseline
-  telemetry_labeled: data/telemetry_harvested
-  artifacts: artifacts
+  baseline: data/baseline                         # baseline-датасет (read-only, PathGuard)
+  telemetry_labeled: data/telemetry_harvested     # выкачанные сэмплы из API telemetry
+  artifacts: artifacts                            # артефакты: models/, cache/, cas/
 
 api:
-  base_url: http://127.0.0.1:5300
+  base_url: http://127.0.0.1:5300                 # API Kouki
   timeout_s: 10
   retries: 2
 
@@ -26,14 +27,32 @@ promote:
   random_state: 42
 
 train:
+  out_dir: artifacts/models
   epochs_l1: 60
   epochs_l2: 60
   batch_size: 64
   lr_l1: 0.0015
-  lr_l2: 0.001
-  th_hard: 0.50
+  lr_l2: 0.0010
+
+  # Порог отбора hard negatives первой ступени L1 в обучение L2
+  th_hard: 0.35
+
+  # Динамический перенос околопороговой уверенности (k-изоляция)
+  # w = k_easy * (p1 / th_hard)^gamma_easy при p1 < th_hard
+  # k_easy: 0.0 = строгая изоляция (strict isolation)
+  k_easy: 0.25
+  gamma_easy: 2.0
+
+  # Веса категорий потерь (Weighted BCE)
+  pos_weight_l1: 2.5                              # штраф за пропуск слова в L1
+  pos_weight_l2: 2.0                              # штраф за пропуск слова в L2
+  conf_weight_l2: 1.3                             # штраф за ложный пробой конфузера в L2
+  conf_cap_ratio: 0.70                            # доля конфузеров в пуле негативов L2
+
+  # Двухпрогонный перевзвес ошибок (error repeat)
+  err_repeat: 2
   err_th_l2: 0.65
-  err_repeat: 3
   seed: 42
-  k_easy: 0.15
-  gamma_easy: 1.0
+
+calibrate:
+  models_dir: artifacts/models

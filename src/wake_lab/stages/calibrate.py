@@ -23,7 +23,9 @@ class CalibrateStage:
         logger = ctx.logger
         warnings: list[str] = []
 
-        models_dir = ctx.paths.artifacts_dir / "models"
+        cal_cfg = {**ctx.config.get("calibrate", {}), **ctx.params}
+        models_dir_override = cal_cfg.get("models_dir")
+        models_dir = (ctx.paths.project_root / models_dir_override).resolve() if models_dir_override else ctx.paths.artifacts_dir / "models"
         preds_path = models_dir / "predictions.json"
 
         if not preds_path.exists():

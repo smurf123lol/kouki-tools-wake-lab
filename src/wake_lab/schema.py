@@ -4,7 +4,7 @@ from typing import Any
 
 KNOWN_CATEGORIES = ("TP", "CONFUSER", "SPEECH_NEG", "NOISE")
 
-_ROOT_KEYS = ("project_root", "paths", "api", "baseline", "promote", "prepare", "train")
+_ROOT_KEYS = ("project_root", "paths", "api", "baseline", "promote", "prepare", "train", "calibrate")
 _PATHS_KEYS = ("baseline", "telemetry_labeled", "artifacts")
 _API_KEYS = ("base_url", "timeout_s", "retries")
 _BASELINE_KEYS = ("manifest", "sha256")
