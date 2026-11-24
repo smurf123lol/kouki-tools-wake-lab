@@ -212,6 +212,18 @@ mod tests {
 
         // Input [4, 74, 20]
         let x = Tensor::<3>::zeros([4, 74, 20], &device);
+        let x4 = x.clone().unsqueeze_dim(1);
+        let out_b0 = model.b0.forward(x4);
+        println!("out_b0 dims: {:?}", out_b0.dims());
+        let out_b1 = model.b1.forward(out_b0);
+        println!("out_b1 dims: {:?}", out_b1.dims());
+        let out_b2 = model.b2.forward(out_b1);
+        println!("out_b2 dims: {:?}", out_b2.dims());
+        let t = out_b2.mean_dim(3).squeeze_dim::<3>(3);
+        println!("t dims: {:?}", t.dims());
+        let pool = t.matmul(model.pool_matrix.clone().unsqueeze_dim(0));
+        println!("pool dims: {:?}", pool.dims());
+
         let logits = model.forward(x);
         assert_eq!(logits.dims(), [4, 1]);
         println!("WakeNetL1 forward successful on GPU!");
@@ -224,6 +236,18 @@ mod tests {
 
         // Input [4, 148, 40]
         let x = Tensor::<3>::zeros([4, 148, 40], &device);
+        let x4 = x.clone().unsqueeze_dim(1);
+        let out_b0 = model.b0.forward(x4);
+        println!("L2 out_b0 dims: {:?}", out_b0.dims());
+        let out_b1 = model.b1.forward(out_b0);
+        println!("L2 out_b1 dims: {:?}", out_b1.dims());
+        let out_b2 = model.b2.forward(out_b1);
+        println!("L2 out_b2 dims: {:?}", out_b2.dims());
+        let t = out_b2.mean_dim(3).squeeze_dim::<3>(3);
+        println!("L2 t dims: {:?}", t.dims());
+        let pool = t.matmul(model.pool_matrix.clone().unsqueeze_dim(0));
+        println!("L2 pool dims: {:?}", pool.dims());
+
         let logits = model.forward(x);
         assert_eq!(logits.dims(), [4, 1]);
         println!("WakeNetL2 forward successful on GPU!");

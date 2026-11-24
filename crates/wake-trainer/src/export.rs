@@ -135,7 +135,18 @@ pub fn export_dwpw_bn(block: &DwPwBnRelu, pw_c: usize) -> LayerExport {
 }
 
 pub fn export_linear(lin: &burn::nn::Linear) -> LayerExport {
-    let w = lin.weight.val().into_data().try_to_vec::<f32>().unwrap();
+    let dims = lin.weight.dims();
+    let in_f = dims[0];
+    let out_f = dims[1];
+    let w_raw = lin.weight.val().into_data().try_to_vec::<f32>().unwrap();
+
+    let mut w = vec![0.0f32; in_f * out_f];
+    for i in 0..out_f {
+        for j in 0..in_f {
+            w[i * in_f + j] = w_raw[j * out_f + i];
+        }
+    }
+
     let b = lin.bias.as_ref().unwrap().val().into_data().try_to_vec::<f32>().unwrap();
     let (q, s) = quantize_int8(&w);
 
@@ -653,6 +664,12 @@ mod tests {
         let device = Device::wgpu(DeviceKind::DiscreteGpu(0));
         let l1 = WakeNetL1::new(&device);
         let l2 = WakeNetL2::new(&device);
+
+        println!("b0.conv.weight.dims = {:?}", l1.b0.conv.weight.dims());
+        println!("b1.dw.weight.dims = {:?}", l1.b1.dw.weight.dims());
+        println!("b1.pw.weight.dims = {:?}", l1.b1.pw.weight.dims());
+        println!("fc1.weight.dims = {:?}", l1.fc1.weight.dims());
+        println!("fc2.weight.dims = {:?}", l1.fc2.weight.dims());
 
         let h1 = generate_c_header_l1(&l1);
         assert!(h1.contains("#define WAKE_L1_MODEL_LEN        4024"));
