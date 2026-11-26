@@ -85,6 +85,22 @@ struct Cli {
     /// Доля конфузеров в пуле негативов L2
     #[arg(long, default_value_t = 0.70)]
     conf_cap_ratio: f32,
+
+    /// Число каналов блока 0 модели L2 (кратно 16)
+    #[arg(long, default_value_t = 16)]
+    l2_c0: usize,
+
+    /// Число каналов блока 1 модели L2 (кратно 16)
+    #[arg(long, default_value_t = 32)]
+    l2_c1: usize,
+
+    /// Число каналов блока 2 модели L2 (кратно 16)
+    #[arg(long, default_value_t = 64)]
+    l2_c2: usize,
+
+    /// Размер скрытого слоя FC1 модели L2 (кратно 16)
+    #[arg(long, default_value_t = 32)]
+    l2_fc1: usize,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -131,6 +147,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         neg_cap_l2: cli.neg_cap_l2,
         k_easy: cli.k_easy,
         gamma_easy: cli.gamma_easy,
+        l2_c0: cli.l2_c0,
+        l2_c1: cli.l2_c1,
+        l2_c2: cli.l2_c2,
+        l2_fc1: cli.l2_fc1,
     };
 
     run_pipeline(&cli.features, &cli.out_dir, &cfg, &device)?;

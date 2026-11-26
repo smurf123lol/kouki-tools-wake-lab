@@ -11,12 +11,12 @@
 * **Как запускать команды:**
   * Если агент находится в среде Windows (PowerShell): команды выполнения стадий и сборки нативного крейта отправляются на сервер через SSH:
     ```bash
-    ssh smurf123lol@192.168.1.157 "cd /srv/kouki-workspace/modules/kouki-tools-wake-lab && /srv/kouki-workspace/_scratch/uv/uv run wake-lab <команда>"
+    ssh smurf123lol@192.168.1.157 "cd /srv/kouki-workspace/modules/kouki-tools-wake-lab && /srv/kouki-workspace/_tools/uv/uv run wake-lab <команда>"
     ```
   * Если агент находится внутри DSH на сервере:
     ```bash
     cd /srv/kouki-workspace/modules/kouki-tools-wake-lab
-    /srv/kouki-workspace/_scratch/uv/uv run wake-lab <команда>
+    /srv/kouki-workspace/_tools/uv/uv run wake-lab <команда>
     ```
 
 ---

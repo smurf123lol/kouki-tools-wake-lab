@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import time
+import zlib
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -194,9 +195,9 @@ class PrepareStage:
                 base_win = place_in_window(pcm, rng, it.is_positive)
                 collector.add(base_win, it.is_positive, it.is_confuser, split=0)
 
-                # Аугментации применяются ТОЛЬКО к сырым (raw) данным.
+                # Аугментации применяются в один шаг ко всем сырым данным (baseline raw и telemetry).
                 # Повторная аугментация уже пред-аугментированных файлов (augmented/) запрещена.
-                if it.source == "raw":
+                if it.source != "augmented":
                     reps = train_variants_raw_pos if it.is_positive else (train_variants_raw_conf if it.is_confuser else 0)
                     for _ in range(reps):
                         aug_win = augmenter.augment(base_win, it.is_positive)
@@ -307,10 +308,12 @@ class PrepareStage:
         warnings: list[str],
         project_root: Path,
     ) -> None:
-        """Сканирует baseline storage (raw/ и augmented/) если файлы ещё не в списке."""
+        """Сканирует только raw-файлы baseline storage (без augmented/, чтобы аугментация шла в один шаг)."""
         existing_paths = {it.path.resolve() for it in items}
 
-        for p in base_dir.rglob("*.wav"):
+        for p in sorted(base_dir.rglob("*.wav")):
+            if "augmented" in p.parts:
+                continue
             p_res = p.resolve()
             if p_res in existing_paths:
                 continue
@@ -329,9 +332,9 @@ class PrepareStage:
                 is_pos = False
                 is_conf = False
 
-            # Распределение 85% train / 15% holdout
-            split = "holdout" if hash(p.name) % 100 < 15 else "train"
-            source = "augmented" if "augmented" in path_str else "raw"
+            # Детерминированное распределение 80% train / 20% holdout без утечки аугментаций
+            split = "holdout" if (zlib.crc32(p.name.encode("utf-8")) % 100) < 20 else "train"
+            source = "raw"
 
             items.append(AudioItem(
                 path=p,

@@ -1,0 +1,81 @@
+# Эксперимент: Сравнение размеров L2 на новом датасете (998 размеченных сэмплов / 8592 окон)
+# Базовая линия: T14-k020-th030 (80 эпох)
+# Проверка гипотезы: увеличение ёмкости L2 улучшает разделение сложных конфузеров и позитивов.
+
+project_root: .
+
+paths:
+  baseline: data/baseline
+  telemetry_labeled: data/telemetry_harvested
+  artifacts: artifacts
+
+api:
+  base_url: http://127.0.0.1:5300
+  timeout_s: 10
+  retries: 2
+
+baseline:
+  manifest: manifest.jsonl
+  sha256: null
+
+promote:
+  categories:
+    TP: positive
+    CONFUSER: negative_confuser
+    SPEECH_NEG: negative_speech
+    NOISE: negative_noise
+  dedup_iou_threshold: 0.8
+  confuser_ratio: 0.15
+  test_size: 0.2
+  random_state: 42
+
+train:
+  out_dir: artifacts/models/t14_l2_scale
+  batch_size: 64
+  lr_l1: 0.0015
+  lr_l2: 0.0010
+  err_repeat: 2
+  err_th_l2: 0.65
+  seed: 42
+  epochs_l1: 80
+  epochs_l2: 80
+  th_hard: 0.30
+  k_easy: 0.20
+  gamma_easy: 2.0
+  conf_weight_l2: 1.3
+  pos_weight_l1: 2.5
+  pos_weight_l2: 2.0
+  conf_cap_ratio: 0.70
+
+  theories:
+    - id: L2-base-16-32-64-32
+      name: "Базовая L2 (16-32-64, fc=32, ~11.6K)"
+      hypothesis: "Текущая архитектура L2 на обновлённом датасете."
+      l2_c0: 16
+      l2_c1: 32
+      l2_c2: 64
+      l2_fc1: 32
+
+    - id: L2-med-16-48-96-64
+      name: "Средняя L2 (16-48-96, fc=64, ~31K)"
+      hypothesis: "Умеренное расширение каналов b1/b2 и FC1 (арена L1+L2 ~179 КБ)."
+      l2_c0: 16
+      l2_c1: 48
+      l2_c2: 96
+      l2_fc1: 64
+
+    - id: L2-large-16-48-128-64
+      name: "Крупная L2 (16-48-128, fc=64, ~40.7K)"
+      hypothesis: "Двукратный рост признаков перед пулингом и FC1 (арена L1+L2 ~179 КБ)."
+      l2_c0: 16
+      l2_c1: 48
+      l2_c2: 128
+      l2_fc1: 64
+
+    - id: L2-xlarge-16-64-128-64
+      name: "Макс L2 в 250КБ (16-64-128, fc=64, ~42.8K)"
+      hypothesis: "Максимальное расширение каналов b1/b2 в рамках бюджета 250 КБ PSRAM (арена ~202.5 КБ)."
+      l2_c0: 16
+      l2_c1: 64
+      l2_c2: 128
+      l2_fc1: 64

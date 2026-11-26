@@ -395,9 +395,24 @@ pub fn generate_c_header_l1(model: &WakeNetL1) -> String {
 }
 
 pub fn generate_c_header_l2(model: &WakeNetL2, th_l1: f32, th_l2: f32) -> String {
-    let l0 = export_conv_bn(&model.b0, 16);
-    let l1 = export_dwpw_bn(&model.b1, 32);
-    let l2 = export_dwpw_bn(&model.b2, 64);
+    let c0 = model.b0.bn.gamma.dims()[0];
+    let c1 = model.b1.bn.gamma.dims()[0];
+    let c2 = model.b2.bn.gamma.dims()[0];
+    let fc1 = model.fc1.weight.dims()[1];
+    let fc1_in = c2 * 4;
+
+    let buf_a_floats = (74 * 20 * c0).max(19 * 5 * c2);
+    let buf_b_floats = (37 * 10 * c1).max(19 * c2 + fc1_in);
+    let arena_floats = buf_a_floats + buf_b_floats;
+    assert!(
+        (arena_floats + 4480) * 4 <= 250 * 1024,
+        "Арены L1+L2 ({} КБ) не влезают в бюджет 250 КБ PSRAM",
+        (arena_floats + 4480) * 4 / 1024
+    );
+
+    let l0 = export_conv_bn(&model.b0, c0);
+    let l1 = export_dwpw_bn(&model.b1, c1);
+    let l2 = export_dwpw_bn(&model.b2, c2);
     let l3 = export_linear(&model.fc1);
     let l4 = export_linear(&model.fc2);
 
@@ -462,9 +477,9 @@ typedef enum {
     s.push_str(&format!("#define WAKE_L2_MODEL_PARAMS     {}\n", total_params));
     s.push_str("#define WAKE_L2_MODEL_FRAMES     148\n");
     s.push_str("#define WAKE_L2_MEL_BINS         40\n");
-    s.push_str("#define WAKE_L2_ARENA_FLOATS     35520\n");
-    s.push_str("#define WAKE_L2_BUF_A_FLOATS     23680\n");
-    s.push_str("#define WAKE_L2_BUF_B_FLOATS     11840\n\n");
+    s.push_str(&format!("#define WAKE_L2_ARENA_FLOATS     {}\n", arena_floats));
+    s.push_str(&format!("#define WAKE_L2_BUF_A_FLOATS     {}\n", buf_a_floats));
+    s.push_str(&format!("#define WAKE_L2_BUF_B_FLOATS     {}\n\n", buf_b_floats));
 
     // Arrays
     s.push_str(&c_array_i8("g_l2_w0", &layers[0].w, 16));
@@ -491,135 +506,135 @@ typedef enum {
     s.push_str(&format!("static const float g_l2_s4 = {:.9e}f;\n\n", layers[4].w_scale));
     s.push_str(&c_array_f32("g_l2_b4", &layers[4].b, 16));
 
-    s.push_str(r#"static inline float wake_l2_infer(const float *spec_normalized, float *arena)
-{
+    s.push_str(&format!(r#"static inline float wake_l2_infer(const float *spec_normalized, float *arena)
+{{
     float *dyn_arena = NULL;
-    if (!arena) {
+    if (!arena) {{
         dyn_arena = (float *)malloc(WAKE_L2_ARENA_FLOATS * sizeof(float));
         if (!dyn_arena) return 0.0f;
         arena = dyn_arena;
-    }
+    }}
 
     float *buf_a = arena;
     float *buf_b = arena + WAKE_L2_BUF_A_FLOATS;
     const float *in = spec_normalized;
 
-    /* Блок 0: Conv2D 5x5, выход 74x20x16 + ReLU */
-    for (int oc = 0; oc < 16; oc++) {
-        for (int oh = 0; oh < 74; oh++) {
-            for (int ow = 0; ow < 20; ow++) {
+    /* Блок 0: Conv2D 5x5, выход 74x20x{c0} + ReLU */
+    for (int oc = 0; oc < {c0}; oc++) {{
+        for (int oh = 0; oh < 74; oh++) {{
+            for (int ow = 0; ow < 20; ow++) {{
                 float sum = g_l2_b0[oc];
-                for (int kh = 0; kh < 5; kh++) {
+                for (int kh = 0; kh < 5; kh++) {{
                     int ih = oh * 2 - 2 + kh;
                     if (ih < 0 || ih >= 148) continue;
-                    for (int kw = 0; kw < 5; kw++) {
+                    for (int kw = 0; kw < 5; kw++) {{
                         int iw = ow * 2 - 2 + kw;
                         if (iw < 0 || iw >= 40) continue;
                         int wi = ((oc * 1 + 0) * 5 + kh) * 5 + kw;
                         sum += in[ih * 40 + iw] * (g_l2_w0[wi] * g_l2_s0);
-                    }
-                }
-                buf_a[(oh * 20 + ow) * 16 + oc] = (sum > 0.0f) ? sum : 0.0f;
-            }
-        }
-    }
+                    }}
+                }}
+                buf_a[(oh * 20 + ow) * {c0} + oc] = (sum > 0.0f) ? sum : 0.0f;
+            }}
+        }}
+    }}
 
-    /* Блок 1: depthwise 3x3 + pointwise -> 32, выход 37x10x32 + ReLU */
-    for (int oh = 0; oh < 37; oh++) {
-        for (int ow = 0; ow < 10; ow++) {
-            float dw_out[16];
-            for (int c = 0; c < 16; c++) {
+    /* Блок 1: depthwise 3x3 + pointwise -> {c1}, выход 37x10x{c1} + ReLU */
+    for (int oh = 0; oh < 37; oh++) {{
+        for (int ow = 0; ow < 10; ow++) {{
+            float dw_out[{c0}];
+            for (int c = 0; c < {c0}; c++) {{
                 float sum = 0.0f;
-                for (int kh = 0; kh < 3; kh++) {
+                for (int kh = 0; kh < 3; kh++) {{
                     int ih = oh * 2 - 1 + kh;
                     if (ih < 0 || ih >= 74) continue;
-                    for (int kw = 0; kw < 3; kw++) {
+                    for (int kw = 0; kw < 3; kw++) {{
                         int iw = ow * 2 - 1 + kw;
                         if (iw < 0 || iw >= 20) continue;
                         int wi = (c * 3 + kh) * 3 + kw;
-                        sum += buf_a[(ih * 20 + iw) * 16 + c] * (g_l2_w1_dw[wi] * g_l2_s1_dw);
-                    }
-                }
+                        sum += buf_a[(ih * 20 + iw) * {c0} + c] * (g_l2_w1_dw[wi] * g_l2_s1_dw);
+                    }}
+                }}
                 dw_out[c] = sum;
-            }
-            for (int oc = 0; oc < 32; oc++) {
+            }}
+            for (int oc = 0; oc < {c1}; oc++) {{
                 float sum = g_l2_b1[oc];
-                for (int ic = 0; ic < 16; ic++) {
-                    sum += dw_out[ic] * (g_l2_w1_pw[oc * 16 + ic] * g_l2_s1_pw);
-                }
-                buf_b[(oh * 10 + ow) * 32 + oc] = (sum > 0.0f) ? sum : 0.0f;
-            }
-        }
-    }
+                for (int ic = 0; ic < {c0}; ic++) {{
+                    sum += dw_out[ic] * (g_l2_w1_pw[oc * {c0} + ic] * g_l2_s1_pw);
+                }}
+                buf_b[(oh * 10 + ow) * {c1} + oc] = (sum > 0.0f) ? sum : 0.0f;
+            }}
+        }}
+    }}
 
-    /* Блок 2: depthwise 3x3 + pointwise -> 64, выход 19x5x64 + ReLU */
-    for (int oh = 0; oh < 19; oh++) {
-        for (int ow = 0; ow < 5; ow++) {
-            float dw_out[32];
-            for (int c = 0; c < 32; c++) {
+    /* Блок 2: depthwise 3x3 + pointwise -> {c2}, выход 19x5x{c2} + ReLU */
+    for (int oh = 0; oh < 19; oh++) {{
+        for (int ow = 0; ow < 5; ow++) {{
+            float dw_out[{c1}];
+            for (int c = 0; c < {c1}; c++) {{
                 float sum = 0.0f;
-                for (int kh = 0; kh < 3; kh++) {
+                for (int kh = 0; kh < 3; kh++) {{
                     int ih = oh * 2 - 1 + kh;
                     if (ih < 0 || ih >= 37) continue;
-                    for (int kw = 0; kw < 3; kw++) {
+                    for (int kw = 0; kw < 3; kw++) {{
                         int iw = ow * 2 - 1 + kw;
                         if (iw < 0 || iw >= 10) continue;
                         int wi = (c * 3 + kh) * 3 + kw;
-                        sum += buf_b[(ih * 10 + iw) * 32 + c] * (g_l2_w2_dw[wi] * g_l2_s2_dw);
-                    }
-                }
+                        sum += buf_b[(ih * 10 + iw) * {c1} + c] * (g_l2_w2_dw[wi] * g_l2_s2_dw);
+                    }}
+                }}
                 dw_out[c] = sum;
-            }
-            for (int oc = 0; oc < 64; oc++) {
+            }}
+            for (int oc = 0; oc < {c2}; oc++) {{
                 float sum = g_l2_b2[oc];
-                for (int ic = 0; ic < 32; ic++) {
-                    sum += dw_out[ic] * (g_l2_w2_pw[oc * 32 + ic] * g_l2_s2_pw);
-                }
-                buf_a[(oh * 5 + ow) * 64 + oc] = (sum > 0.0f) ? sum : 0.0f;
-            }
-        }
-    }
+                for (int ic = 0; ic < {c1}; ic++) {{
+                    sum += dw_out[ic] * (g_l2_w2_pw[oc * {c1} + ic] * g_l2_s2_pw);
+                }}
+                buf_a[(oh * 5 + ow) * {c2} + oc] = (sum > 0.0f) ? sum : 0.0f;
+            }}
+        }}
+    }}
 
-    /* Temporal pooling: среднее по mel-бинам -> 19x64, затем adaptive avg pool 19 -> 4 */
+    /* Temporal pooling: среднее по mel-бинам -> 19x{c2}, затем adaptive avg pool 19 -> 4 */
     float *t_feats = buf_b;
-    float *c_in = buf_b + (19 * 64);
-    for (int t = 0; t < 19; t++) {
-        for (int c = 0; c < 64; c++) {
+    float *c_in = buf_b + (19 * {c2});
+    for (int t = 0; t < 19; t++) {{
+        for (int c = 0; c < {c2}; c++) {{
             float msum = 0.0f;
-            for (int w = 0; w < 5; w++) {
-                msum += buf_a[(t * 5 + w) * 64 + c];
-            }
-            t_feats[t * 64 + c] = msum / (float)5;
-        }
-    }
+            for (int w = 0; w < 5; w++) {{
+                msum += buf_a[(t * 5 + w) * {c2} + c];
+            }}
+            t_feats[t * {c2} + c] = msum / (float)5;
+        }}
+    }}
 
-    for (int c = 0; c < 64; c++) {
-        c_in[c * 4 + 0] = (t_feats[0 * 64 + c] + t_feats[1 * 64 + c] + t_feats[2 * 64 + c] + t_feats[3 * 64 + c] + t_feats[4 * 64 + c]) / (float)5;
-        c_in[c * 4 + 1] = (t_feats[4 * 64 + c] + t_feats[5 * 64 + c] + t_feats[6 * 64 + c] + t_feats[7 * 64 + c] + t_feats[8 * 64 + c] + t_feats[9 * 64 + c]) / (float)6;
-        c_in[c * 4 + 2] = (t_feats[9 * 64 + c] + t_feats[10 * 64 + c] + t_feats[11 * 64 + c] + t_feats[12 * 64 + c] + t_feats[13 * 64 + c] + t_feats[14 * 64 + c]) / (float)6;
-        c_in[c * 4 + 3] = (t_feats[14 * 64 + c] + t_feats[15 * 64 + c] + t_feats[16 * 64 + c] + t_feats[17 * 64 + c] + t_feats[18 * 64 + c]) / (float)5;
-    }
+    for (int c = 0; c < {c2}; c++) {{
+        c_in[c * 4 + 0] = (t_feats[0 * {c2} + c] + t_feats[1 * {c2} + c] + t_feats[2 * {c2} + c] + t_feats[3 * {c2} + c] + t_feats[4 * {c2} + c]) / (float)5;
+        c_in[c * 4 + 1] = (t_feats[4 * {c2} + c] + t_feats[5 * {c2} + c] + t_feats[6 * {c2} + c] + t_feats[7 * {c2} + c] + t_feats[8 * {c2} + c] + t_feats[9 * {c2} + c]) / (float)6;
+        c_in[c * 4 + 2] = (t_feats[9 * {c2} + c] + t_feats[10 * {c2} + c] + t_feats[11 * {c2} + c] + t_feats[12 * {c2} + c] + t_feats[13 * {c2} + c] + t_feats[14 * {c2} + c]) / (float)6;
+        c_in[c * 4 + 3] = (t_feats[14 * {c2} + c] + t_feats[15 * {c2} + c] + t_feats[16 * {c2} + c] + t_feats[17 * {c2} + c] + t_feats[18 * {c2} + c]) / (float)5;
+    }}
 
-    /* FC1: 256 -> 32 + ReLU */
-    float fc1[32];
-    for (int i = 0; i < 32; i++) {
+    /* FC1: {fc1_in} -> {fc1} + ReLU */
+    float fc1[{fc1}];
+    for (int i = 0; i < {fc1}; i++) {{
         float sum = g_l2_b3[i];
-        for (int j = 0; j < 256; j++) {
-            sum += c_in[j] * (g_l2_w3[i * 256 + j] * g_l2_s3);
-        }
+        for (int j = 0; j < {fc1_in}; j++) {{
+            sum += c_in[j] * (g_l2_w3[i * {fc1_in} + j] * g_l2_s3);
+        }}
         fc1[i] = (sum > 0.0f) ? sum : 0.0f;
-    }
+    }}
 
-    /* FC2: 32 -> 1 + Sigmoid */
+    /* FC2: {fc1} -> 1 + Sigmoid */
     float logit = g_l2_b4[0];
-    for (int i = 0; i < 32; i++) {
+    for (int i = 0; i < {fc1}; i++) {{
         logit += fc1[i] * (g_l2_w4[i] * g_l2_s4);
-    }
+    }}
 
     if (dyn_arena) free(dyn_arena);
     return 1.0f / (1.0f + expf(-logit));
-}
-"#);
+}}
+"#, c0 = c0, c1 = c1, c2 = c2, fc1 = fc1, fc1_in = fc1_in));
 
     s
 }

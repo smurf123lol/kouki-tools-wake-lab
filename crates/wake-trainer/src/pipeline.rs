@@ -1,7 +1,7 @@
 use crate::data::Dataset;
 use crate::export::save_headers;
 use crate::metrics::CascadeMetrics;
-use crate::model::{WakeNetL1, WakeNetL2};
+use crate::model::{L2ArchConfig, WakeNetL1, WakeNetL2};
 use crate::trainer::{predict_l1, predict_l2, train_l1, train_l2, TrainConfig};
 use burn::tensor::Device;
 use serde::{Deserialize, Serialize};
@@ -31,6 +31,10 @@ pub struct PipelineConfig {
     /// Степень уверенности для динамического переноса: w = k_easy * (p1 / th_hard)^gamma_easy.
     /// 1.0 = линейный перенос, 2.0 = квадратичный перенос (фокус на near-miss окнах).
     pub gamma_easy: f32,
+    pub l2_c0: usize,
+    pub l2_c1: usize,
+    pub l2_c2: usize,
+    pub l2_fc1: usize,
 }
 
 impl Default for PipelineConfig {
@@ -52,6 +56,10 @@ impl Default for PipelineConfig {
             neg_cap_l2: None,
             k_easy: 0.15,
             gamma_easy: 1.0,
+            l2_c0: 16,
+            l2_c1: 32,
+            l2_c2: 64,
+            l2_fc1: 32,
         }
     }
 }
@@ -246,8 +254,15 @@ pub fn train_cascade(
     println!("  L2 train dataset: {} окон", train_l2_ds.n_samples);
 
     // 3. Обучение L2
-    println!("\n[Этап 3] Обучение модели L2 (Xtensa SIMD-16 alignment)...");
-    let model_l2 = WakeNetL2::new(device);
+    println!("\n[Этап 3] Обучение модели L2 (Xtensa SIMD-16 alignment: c0={}, c1={}, c2={}, fc1={})...",
+        cfg.l2_c0, cfg.l2_c1, cfg.l2_c2, cfg.l2_fc1);
+    let l2_arch = L2ArchConfig {
+        c0: cfg.l2_c0,
+        c1: cfg.l2_c1,
+        c2: cfg.l2_c2,
+        fc1: cfg.l2_fc1,
+    };
+    let model_l2 = WakeNetL2::new_with_arch(device, l2_arch);
     let l2_cfg = TrainConfig {
         epochs: cfg.epochs_l2,
         batch_size: cfg.batch_size,
@@ -263,7 +278,7 @@ pub fn train_cascade(
         let train_l2_rep = error_repeat(&train_l2_ds, &train_probs, &train_l2_ds.y, cfg.err_th_l2, cfg.err_repeat, true);
         println!("  L2 перевзвес: окон {} -> {}", train_l2_ds.n_samples, train_l2_rep.n_samples);
 
-        let final_model_l2 = WakeNetL2::new(device);
+        let final_model_l2 = WakeNetL2::new_with_arch(device, l2_arch);
         train_l2(final_model_l2, &train_l2_rep, val_ds, &l2_cfg, device)
     } else {
         train_l2(model_l2, &train_l2_ds, val_ds, &l2_cfg, device)

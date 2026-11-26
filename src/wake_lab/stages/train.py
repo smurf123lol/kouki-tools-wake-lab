@@ -104,6 +104,10 @@ class TrainStage:
                 "--pos-weight-l2", str(pos_weight_l2),
                 "--conf-weight-l2", str(conf_weight_l2),
                 "--conf-cap-ratio", str(conf_cap_ratio),
+                "--l2-c0", str(int(train_cfg.get("l2_c0", 16))),
+                "--l2-c1", str(int(train_cfg.get("l2_c1", 32))),
+                "--l2-c2", str(int(train_cfg.get("l2_c2", 64))),
+                "--l2-fc1", str(int(train_cfg.get("l2_fc1", 32))),
             ]
 
             if "neg_cap_l2" in train_cfg:
@@ -230,6 +234,10 @@ class TrainStage:
                 "--pos-weight-l2", str(float(merged.get("pos_weight_l2", 2.0))),
                 "--conf-weight-l2", str(float(merged.get("conf_weight_l2", 1.0))),
                 "--conf-cap-ratio", str(float(merged.get("conf_cap_ratio", 0.70))),
+                "--l2-c0", str(int(merged.get("l2_c0", 16))),
+                "--l2-c1", str(int(merged.get("l2_c1", 32))),
+                "--l2-c2", str(int(merged.get("l2_c2", 64))),
+                "--l2-fc1", str(int(merged.get("l2_fc1", 32))),
             ]
 
             if "neg_cap_l2" in merged:

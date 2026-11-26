@@ -142,6 +142,25 @@ impl WakeNetL1 {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct L2ArchConfig {
+    pub c0: usize,
+    pub c1: usize,
+    pub c2: usize,
+    pub fc1: usize,
+}
+
+impl Default for L2ArchConfig {
+    fn default() -> Self {
+        Self {
+            c0: 16,
+            c1: 32,
+            c2: 64,
+            fc1: 32,
+        }
+    }
+}
+
 #[derive(Module, Debug)]
 pub struct WakeNetL2 {
     pub b0: ConvBnRelu,
@@ -154,19 +173,23 @@ pub struct WakeNetL2 {
 
 impl WakeNetL2 {
     pub fn new(device: &Device) -> Self {
-        // T130: Проверка SIMD-выравнивания архитектуры L2 (каналы кратны 16 под Xtensa PIE 128-bit)
-        assert_eq!(16 % 16, 0, "L2 SIMD assert: b0 oc=16");
-        assert_eq!(32 % 16, 0, "L2 SIMD assert: b1 pw=32");
-        assert_eq!(64 % 16, 0, "L2 SIMD assert: b2 pw=64");
-        assert_eq!(32 % 16, 0, "L2 SIMD assert: fc1=32");
+        Self::new_with_arch(device, L2ArchConfig::default())
+    }
 
-        let b0 = ConvBnRelu::new(1, 16, [5, 5], [2, 2], [2, 2], 1, true, device);
-        let b1 = DwPwBnRelu::new(16, 16, 32, [3, 3], [2, 2], [1, 1], device);
-        let b2 = DwPwBnRelu::new(32, 32, 64, [3, 3], [2, 2], [1, 1], device);
+    pub fn new_with_arch(device: &Device, arch: L2ArchConfig) -> Self {
+        // T130: Проверка SIMD-выравнивания архитектуры L2 (каналы кратны 16 под Xtensa PIE 128-bit)
+        assert_eq!(arch.c0 % 16, 0, "L2 SIMD assert: b0 oc={}", arch.c0);
+        assert_eq!(arch.c1 % 16, 0, "L2 SIMD assert: b1 pw={}", arch.c1);
+        assert_eq!(arch.c2 % 16, 0, "L2 SIMD assert: b2 pw={}", arch.c2);
+        assert_eq!(arch.fc1 % 16, 0, "L2 SIMD assert: fc1={}", arch.fc1);
+
+        let b0 = ConvBnRelu::new(1, arch.c0, [5, 5], [2, 2], [2, 2], 1, true, device);
+        let b1 = DwPwBnRelu::new(arch.c0, arch.c0, arch.c1, [3, 3], [2, 2], [1, 1], device);
+        let b2 = DwPwBnRelu::new(arch.c1, arch.c1, arch.c2, [3, 3], [2, 2], [1, 1], device);
 
         let pool_matrix = create_adaptive_pool_matrix(19, device);
-        let fc1 = LinearConfig::new(64 * 4, 32).init(device);
-        let fc2 = LinearConfig::new(32, 1).init(device);
+        let fc1 = LinearConfig::new(arch.c2 * 4, arch.fc1).init(device);
+        let fc2 = LinearConfig::new(arch.fc1, 1).init(device);
 
         Self {
             b0,

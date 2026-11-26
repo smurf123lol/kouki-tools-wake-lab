@@ -27,26 +27,26 @@
 cd modules/kouki-tools-wake-lab
 
 # 1. Проверить доступные стадии
-/srv/kouki-workspace/_scratch/uv/uv run wake-lab stage list
+/srv/kouki-workspace/_tools/uv/uv run wake-lab stage list
 
 # 2. Выкачать данные из API Kouki (требуется KOUKI_API_TOKEN)
 export KOUKI_API_TOKEN="$(sudo -n kouki-admin api-token)"
-/srv/kouki-workspace/_scratch/uv/uv run wake-lab stage harvest --limit 10
+/srv/kouki-workspace/_tools/uv/uv run wake-lab stage harvest --limit 10
 
 # 3. Дедуплицировать корпус и подготовить CAS-сплит
-/srv/kouki-workspace/_scratch/uv/uv run wake-lab stage promote
+/srv/kouki-workspace/_tools/uv/uv run wake-lab stage promote
 
 # 4. Рассчитать Log-Mel спектрограммы и аугментации в тензоры
-/srv/kouki-workspace/_scratch/uv/uv run wake-lab stage prepare
+/srv/kouki-workspace/_tools/uv/uv run wake-lab stage prepare
 
 # 5. Обучить модель на GPU по дефолтному конфигу
-/srv/kouki-workspace/_scratch/uv/uv run wake-lab stage train
+/srv/kouki-workspace/_tools/uv/uv run wake-lab stage train
 
 # 6. Откалибровать пороги профилей для станции
-/srv/kouki-workspace/_scratch/uv/uv run wake-lab stage calibrate
+/srv/kouki-workspace/_tools/uv/uv run wake-lab stage calibrate
 
 # 7. Посмотреть JSON-сводку
-/srv/kouki-workspace/_scratch/uv/uv run wake-lab report
+/srv/kouki-workspace/_tools/uv/uv run wake-lab report
 ```
 
 ### На Windows:
